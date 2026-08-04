@@ -1,13 +1,112 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+model enterprise {
+  id                            String                          @id @default(uuid()) @db.Uuid
+  name                          String
+  email                         String
+  phone_number                  String
+  create_at                     DateTime
+  update_at                     DateTime
+  user                          user[]
+  influencer                    influencer[]
+  enterprise_url                enterprise_url[]
+  enterprise_toggle_url         enterprise_toggle_url?
+  enterprise_count_daily_clicks enterprise_count_daily_clicks[]
+}
+
+model user {
+  id            String     @id @default(uuid()) @db.Uuid
+  name          String
+  email         String
+  password      String
+  enterprise_id String     @db.Uuid
+  create_at     DateTime
+  update_at     DateTime
+  enterprise    enterprise @relation(fields: [enterprise_id], references: [id])
+}
+
+model influencer {
+  id                            String                          @id @default(uuid()) @db.Uuid
+  name                          String
+  email                         String
+  password                      String
+  counter_entries               Int
+  personal_url                  String
+  url_img_profile               String
+  img_key                       String
+  enterprise_id                 String                          @db.Uuid
+  create_at                     DateTime
+  update_at                     DateTime
+  enterprise                    enterprise                      @relation(fields: [enterprise_id], references: [id])
+  influencer_platform_url       influencer_platform_url[]
+  influencer_count_daily_clicks influencer_count_daily_clicks[]
+}
+
+model influencer_platform_url {
+  id            String     @id @default(uuid()) @db.Uuid
+  url           String
+  platform      String
+  influencer_id String     @db.Uuid
+  create_at     DateTime
+  update_at     DateTime
+  influencer    influencer @relation(fields: [influencer_id], references: [id])
+}
+
+model influencer_count_daily_clicks {
+  id             String     @id @default(uuid()) @db.Uuid
+  daily_clicks   Int
+  reference_date DateTime   @db.Date
+  influencer_id  String     @db.Uuid
+  create_at      DateTime
+  update_at      DateTime
+  influencer     influencer @relation(fields: [influencer_id], references: [id])
+}
+
+model enterprise_url {
+  id                  String                @id @default(uuid()) @db.Uuid
+  title               String
+  url                 String
+  count_clicks        Int
+  active              Boolean
+  order               Int
+  in_rotation_pool    Boolean
+  enterprise_id       String                @db.Uuid
+  create_at           DateTime
+  update_at           DateTime
+  enterprise          enterprise            @relation(fields: [enterprise_id], references: [id])
+  toggle_url_schedule toggle_url_schedule[]
+}
+
+model toggle_url_schedule {
+  id                String         @id @default(uuid()) @db.Uuid
+  enterprise_url_id String         @db.Uuid
+  date_time         DateTime
+  update_at         DateTime
+  enterprise_url    enterprise_url @relation(fields: [enterprise_url_id], references: [id])
+}
+
+model enterprise_toggle_url {
+  id               String     @id @default(uuid()) @db.Uuid
+  toggle_type      String
+  limit_clicks     Int
+  timer_in_minutes Int
+  enterprise_id    String     @unique @db.Uuid
+  update_at        DateTime
+  enterprise       enterprise @relation(fields: [enterprise_id], references: [id])
+}
+
+model enterprise_count_daily_clicks {
+  id             String     @id @default(uuid()) @db.Uuid
+  daily_clicks   Int
+  reference_date DateTime   @db.Date
+  enterprise_id  String     @db.Uuid
+  create_at      DateTime
+  update_at      DateTime
+  enterprise     enterprise @relation(fields: [enterprise_id], references: [id])
 }
