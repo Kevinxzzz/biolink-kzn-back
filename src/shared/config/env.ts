@@ -1,0 +1,11 @@
+import "dotenv/config";
+
+export const env = {
+    DATABASE_URL: process.env.DATABASE_URL,
+    PORT: process.env.PORT,
+    FRONTEND_URL: process.env.FRONTEND_URL,
+    FRONTEND_URL_LOCAL: process.env.FRONTEND_URL_LOCAL,
+    TRUST_PROXY: process.env.TRUST_PROXY,
+    JWT_SECRET: process.env.JWT_SECRECT
+
+}
