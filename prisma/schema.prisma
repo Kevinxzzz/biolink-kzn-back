@@ -6,7 +6,7 @@ datasource db {
   provider = "postgresql"
 }
 
-enum ToogleType {
+enum ToggleType {
   MANUAL
   LIMITCLICKS
   SCHEDULE
@@ -20,6 +20,7 @@ enum Platform {
 }
 
 enum UserRole {
+  OWNER
   ADMIN
 }
 
@@ -36,8 +37,26 @@ model enterprise {
   enterpriseUrl              enterpriseUrl[]
   enterpriseToggleUrl        enterpriseToggleUrl?
   enterpriseCountDailyClicks enterpriseCountDailyClicks[]
+  enterpriseTokenInvites     enterpriseTokenInvite[]
 
-  @@map("enterprise")
+  @@unique([email, phoneNumber])
+}
+
+model enterpriseTokenInvite {
+  id           String   @id @default(uuid()) @db.Uuid
+  token        String
+  maxUses      Int?     @map("max_uses")
+  createdById  String   @map("created_by_id") @db.Uuid
+  enterpriseId String   @map("enterprise_id") @db.Uuid
+  createAt     DateTime @map("create_at")
+  updateAt     DateTime @map("update_at")
+
+  enterprise       enterprise        @relation(fields: [enterpriseId], references: [id])
+  user             user              @relation(fields: [createdById], references: [id])
+  userTokenInvites userTokenInvite[]
+
+  @@unique([token])
+  @@map("enterprise_token_invite")
 }
 
 model user {
@@ -45,14 +64,40 @@ model user {
   name         String
   email        String
   password     String
-  role         UserRole
+  roleId       String   @map("role_id") @db.Uuid
   enterpriseId String   @map("enterprise_id") @db.Uuid
   createAt     DateTime @map("create_at")
   updateAt     DateTime @map("update_at")
 
-  enterprise enterprise @relation(fields: [enterpriseId], references: [id])
+  enterprise             enterprise              @relation(fields: [enterpriseId], references: [id])
+  role                   role                    @relation(fields: [roleId], references: [id])
+  enterpriseTokenInvites enterpriseTokenInvite[]
+  userTokenInvites       userTokenInvite[]
 
+  @@unique([email])
   @@map("user")
+}
+
+model role {
+  id       String   @id @default(uuid()) @db.Uuid
+  role     UserRole
+  createAt DateTime @map("create_at")
+
+  user user[]
+
+  @@map("role")
+}
+
+model userTokenInvite {
+  id          String   @id @default(uuid()) @db.Uuid
+  usedBy      String   @map("used_by") @db.Uuid
+  tokenInvite String   @map("token_invite") @db.Uuid
+  usedAt      DateTime @map("used_at")
+
+  enterpriseTokenInvite enterpriseTokenInvite @relation(fields: [tokenInvite], references: [id])
+  user                  user                  @relation(fields: [usedBy], references: [id])
+
+  @@map("user_token_invite")
 }
 
 model influencer {
@@ -62,8 +107,8 @@ model influencer {
   password       String
   counterEntries Int      @map("counter_entries")
   personalUrl    String   @map("personal_url")
-  urlImgProfile  String   @map("url_img_profile")
-  imgKey         String   @map("img_key")
+  urlImgProfile  String?  @map("url_img_profile")
+  imgKey         String?  @map("img_key")
   enterpriseId   String   @map("enterprise_id") @db.Uuid
   createAt       DateTime @map("create_at")
   updateAt       DateTime @map("update_at")
@@ -72,18 +117,27 @@ model influencer {
   influencerPlatformUrl      influencerPlatformUrl[]
   influencerCountDailyClicks influencerCountDailyClicks[]
 
-  @@map("influencer")
+  @@unique([name, email, personalUrl])
+}
+
+model platform {
+  id       String   @id @default(uuid()) @db.Uuid
+  platform Platform
+  createAt DateTime @map("create_at")
+
+  influencerPlatformUrl influencerPlatformUrl[]
 }
 
 model influencerPlatformUrl {
   id           String   @id @default(uuid()) @db.Uuid
   url          String
-  platform     Platform
+  platformId   String   @map("platform_id") @db.Uuid
   influencerId String   @map("influencer_id") @db.Uuid
   createAt     DateTime @map("create_at")
   updateAt     DateTime @map("update_at")
 
   influencer influencer @relation(fields: [influencerId], references: [id])
+  platform   platform   @relation(fields: [platformId], references: [id])
 
   @@map("influencer_platform_url")
 }
@@ -98,6 +152,7 @@ model influencerCountDailyClicks {
 
   influencer influencer @relation(fields: [influencerId], references: [id])
 
+  @@unique([influencerId, referenceDate])
   @@map("influencer_count_daily_clicks")
 }
 
@@ -132,9 +187,9 @@ model toggleUrlSchedule {
 
 model enterpriseToggleUrl {
   id             String     @id @default(uuid()) @db.Uuid
-  toggleType     ToogleType @map("toggle_type")
-  limitClicks    Int        @map("limit_clicks")
-  timerInMinutes Int        @map("timer_in_minutes")
+  toggleType     ToggleType @map("toggle_type")
+  limitClicks    Int?       @map("limit_clicks")
+  timerInMinutes Int?       @map("timer_in_minutes")
   enterpriseId   String     @unique @map("enterprise_id") @db.Uuid
   updateAt       DateTime   @map("update_at")
 
@@ -153,5 +208,6 @@ model enterpriseCountDailyClicks {
 
   enterprise enterprise @relation(fields: [enterpriseId], references: [id])
 
+  @@unique([enterpriseId, referenceDate])
   @@map("enterprise_count_daily_clicks")
 }

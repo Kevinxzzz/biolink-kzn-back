@@ -1,4 +1,4 @@
-import { loginSchema, registerSellerSchema } from "./auth.schema.js";
+import { loginZod } from "../zod/auth.zod";
 import { z } from "zod";
 
-export type LoginInput = z.infer<typeof loginSchema>;
+export type LoginInput = z.infer<typeof loginZod>;
