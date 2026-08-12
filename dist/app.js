@@ -8,6 +8,7 @@ const cors_1 = require("./shared/security/cors");
 const env_1 = require("./shared/config/env");
 const helmet_1 = __importDefault(require("helmet"));
 const auth_router_1 = require("./modules/auth/auth.router");
+const errorHandler_1 = require("./shared/middlewares/errorHandler");
 const app = (0, express_1.default)();
 if (env_1.env.TRUST_PROXY) {
     app.set("trust proxy", 1);
@@ -19,4 +20,5 @@ app.use((0, helmet_1.default)({
 app.use(cors_1.corsConfig);
 app.use(express_1.default.json());
 app.use("/auth", auth_router_1.authRoutes);
+app.use(errorHandler_1.errorHandler);
 exports.default = app;

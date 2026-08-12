@@ -6,9 +6,11 @@ COPY package*.json ./
 
 RUN npm install
 
-COPY . .
+COPY --chown=node:node . .
 
 RUN npx prisma generate
+
+USER node
 
 EXPOSE 3000
 

@@ -44,3 +44,53 @@ export const loginIn = async ({ email, password }: LoginInput) => {
         token
     }
 };
+
+export const registerEnterprise = async (data: import("../../shared/types/auth.type").RegisterEnterpriseInput) => {
+    try {
+        const hashedPassword = await bcrypt.hash(data.user.password, 10);
+
+        const result = await prisma.$transaction(async (tx) => {
+            const roleOwner = await tx.role.findFirst({
+                where: { role: "OWNER" }
+            });
+
+            if (!roleOwner) {
+                throw new AppError("Internal Server Error", 500);
+            }
+
+            const newEnterprise = await tx.enterprise.create({
+                data: {
+                    name: data.company.name,
+                    email: data.company.email,
+                    phoneNumber: data.company.phone,
+                    createAt: new Date(),
+                    updateAt: new Date(),
+                }
+            });
+
+            const newUser = await tx.user.create({
+                data: {
+                    name: data.user.name,
+                    email: data.user.email,
+                    password: hashedPassword,
+                    enterpriseId: newEnterprise.id,
+                    roleId: roleOwner.id,
+                    createAt: new Date(),
+                    updateAt: new Date(),
+                }
+            });
+
+            return { enterpriseId: newEnterprise.id, userId: newUser.id };
+        });
+
+        return {
+            message: "Empresa criada com sucesso",
+            data: result
+        };
+    } catch (error: any) {
+        if (error.code === 'P2002') {
+            throw new AppError("Dados já cadastrados (email ou telefone)", 409);
+        }
+        throw error;
+    }
+};

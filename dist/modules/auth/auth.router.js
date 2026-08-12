@@ -6,5 +6,5 @@ const rateLimit_1 = require("../../shared/config/rateLimit");
 const auth_controller_1 = require("./auth.controller");
 const authRoutes = (0, express_1.Router)();
 exports.authRoutes = authRoutes;
-authRoutes.post("/register/enterprise", rateLimit_1.authLimiter);
+authRoutes.post("/register/enterprise", rateLimit_1.authLimiter, auth_controller_1.registerCompany);
 authRoutes.post("/login", rateLimit_1.authLimiter, auth_controller_1.login);
