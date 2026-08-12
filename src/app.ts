@@ -4,6 +4,7 @@ import { env } from "./shared/config/env"
 import helmet from "helmet";
 
 import { authRoutes } from "./modules/auth/auth.router";
+import { errorHandler } from "./shared/middlewares/errorHandler";
 
 const app = express();
 
@@ -21,5 +22,7 @@ app.use(corsConfig);
 app.use(express.json());
 
 app.use("/auth", authRoutes);
+
+app.use(errorHandler);
 
 export default app;
