@@ -15,7 +15,11 @@ export const loginIn = async ({ email, password }: LoginInput) => {
             email: true,
             password: true,
             enterpriseId: true,
-            role: true
+            role: {
+                select: {
+                    role: true
+                }
+            }
         }
     });
 
@@ -28,7 +32,7 @@ export const loginIn = async ({ email, password }: LoginInput) => {
     const tokenPayload: import("../../shared/types/token").TokenPayload = {
         sub: user.id,
         accountType: "USER",
-        role: user.role
+        role: user.role.role
     }
 
     const token = jwt.sign(tokenPayload, env.JWT_SECRET!, {

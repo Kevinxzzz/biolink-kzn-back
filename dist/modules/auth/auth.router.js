@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.authRoutes = void 0;
+const express_1 = require("express");
+const rateLimit_1 = require("../../shared/config/rateLimit");
+const auth_controller_1 = require("./auth.controller");
+const authRoutes = (0, express_1.Router)();
+exports.authRoutes = authRoutes;
+authRoutes.post("/register/enterprise", rateLimit_1.authLimiter);
+authRoutes.post("/login", rateLimit_1.authLimiter, auth_controller_1.login);
