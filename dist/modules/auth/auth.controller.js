@@ -11,6 +11,10 @@ const login = async (req, res, next) => {
         return res.status(200).json(result);
     }
     catch (error) {
+        if (error.name === "ZodError") {
+            next(new appError_1.AppError("Dados inválidos", 400));
+            return;
+        }
         next(error);
     }
 };

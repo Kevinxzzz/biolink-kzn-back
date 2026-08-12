@@ -1,19 +1,28 @@
 import { Request, Response, NextFunction } from "express";
-import { registerCompany } from "./auth.controller";
-import { registerEnterprise } from "./auth.service";
+import { login, registerCompany } from "./auth.controller";
+import { loginIn, registerEnterprise } from "./auth.service";
 import { AppError } from "../../shared/errors/appError";
 import { prisma } from "../../shared/database/prisma";
 import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { UserRole } from "@prisma/client";
 
 jest.mock("../../shared/database/prisma", () => ({
     prisma: {
-        $transaction: jest.fn()
+        $transaction: jest.fn(),
+        user: {
+            findFirst: jest.fn()
+        }
     }
 }));
 
 jest.mock("bcryptjs", () => ({
     hash: jest.fn(),
     compare: jest.fn()
+}));
+
+jest.mock("jsonwebtoken", () => ({
+    sign: jest.fn()
 }));
 
 describe("Auth Module - Register Enterprise", () => {
@@ -84,8 +93,6 @@ describe("Auth Module - Register Enterprise", () => {
                 data: { enterpriseId: "ent-id", userId: "user-id" }
             });
 
-            // confirmPassword was omitted since it doesn't fail Zod and doesn't reach the DB
-            // Password shouldn't be in the response
             const jsonArg = (mockRes.json as jest.Mock).mock.calls[0][0];
             expect(jsonArg.data).not.toHaveProperty("password");
         });
@@ -109,13 +116,8 @@ describe("Auth Module - Register Enterprise", () => {
 
             const result = await registerEnterprise(input);
 
-            // Password is hashed
             expect(bcrypt.hash).toHaveBeenCalledWith("password123", 10);
-
-            // Transaction operations
             expect(mockTx.role.findFirst).toHaveBeenCalledWith({ where: { role: "OWNER" } });
-            
-            // Enterprise created
             expect(mockTx.enterprise.create).toHaveBeenCalledWith({
                 data: expect.objectContaining({
                     name: "Test Company",
@@ -124,18 +126,16 @@ describe("Auth Module - Register Enterprise", () => {
                 })
             });
 
-            // User created with correct relationships and hashed password
             expect(mockTx.user.create).toHaveBeenCalledWith({
                 data: expect.objectContaining({
                     name: "Test User",
                     email: "user@test.com",
                     password: "hashed_pwd",
-                    enterpriseId: "ent-123", // Points to created enterprise
-                    roleId: "role-123"       // Points to OWNER role
+                    enterpriseId: "ent-123",
+                    roleId: "role-123"
                 })
             });
 
-            // Password is not returned
             expect(result).toEqual({
                 message: "Empresa criada com sucesso",
                 data: { enterpriseId: "ent-123", userId: "user-123" }
@@ -187,7 +187,7 @@ describe("Auth Module - Register Enterprise", () => {
             });
         });
 
-        it("should rollback transaction if user creation fails (enterprise is not committed)", async () => {
+        it("should rollback transaction if user creation fails", async () => {
             (bcrypt.hash as jest.Mock).mockResolvedValue("hashed_pwd");
             mockTx.role.findFirst.mockResolvedValue({ id: "role-123", role: "OWNER" });
             mockTx.enterprise.create.mockResolvedValue({ id: "ent-123" });
@@ -205,11 +205,156 @@ describe("Auth Module - Register Enterprise", () => {
             };
 
             await expect(registerEnterprise(input)).rejects.toThrow("Failed to create user");
-            
-            // Enterprise create was called inside transaction, but since user.create threw, 
-            // the whole transaction is rejected and rolls back.
             expect(mockTx.enterprise.create).toHaveBeenCalled();
             expect(mockTx.user.create).toHaveBeenCalled();
+        });
+    });
+});
+
+describe("Auth Module - Login", () => {
+    let mockReq: Partial<Request>;
+    let mockRes: Partial<Response>;
+    let mockNext: jest.Mock;
+
+    beforeEach(() => {
+        mockReq = {
+            body: {
+                email: "user@test.com",
+                password: "password123"
+            }
+        };
+        mockRes = {
+            status: jest.fn().mockReturnThis(),
+            json: jest.fn()
+        };
+        mockNext = jest.fn();
+        jest.clearAllMocks();
+    });
+
+    describe("Controller", () => {
+        it("should return 200 and token on valid login", async () => {
+            (prisma.user.findFirst as jest.Mock).mockResolvedValue({
+                id: "user-1",
+                name: "Owner User",
+                email: "user@test.com",
+                password: "hashed_password",
+                enterpriseId: "ent-1",
+                role: { role: UserRole.OWNER }
+            });
+            (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+            (jwt.sign as jest.Mock).mockReturnValue("mocked-jwt-token");
+
+            await login(mockReq as Request, mockRes as Response, mockNext);
+
+            expect(mockRes.status).toHaveBeenCalledWith(200);
+            expect(mockRes.json).toHaveBeenCalledWith({ token: "mocked-jwt-token" });
+        });
+
+        it("should return 400 when email format is invalid", async () => {
+            mockReq.body.email = "invalid-email";
+
+            await login(mockReq as Request, mockRes as Response, mockNext);
+
+            expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
+            const error = mockNext.mock.calls[0][0];
+            expect(error.statusCode).toBe(400);
+            expect(error.message).toBe("Dados inválidos");
+        });
+
+        it("should return 400 when password is missing", async () => {
+            delete mockReq.body.password;
+
+            await login(mockReq as Request, mockRes as Response, mockNext);
+
+            expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
+            const error = mockNext.mock.calls[0][0];
+            expect(error.statusCode).toBe(400);
+            expect(error.message).toBe("Dados inválidos");
+        });
+    });
+
+    describe("Service (loginIn)", () => {
+        it("should successfully login OWNER user and generate JWT token", async () => {
+            (prisma.user.findFirst as jest.Mock).mockResolvedValue({
+                id: "owner-id",
+                name: "Owner Name",
+                email: "owner@test.com",
+                password: "hashed_password",
+                enterpriseId: "enterprise-id",
+                role: { role: UserRole.OWNER }
+            });
+            (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+            (jwt.sign as jest.Mock).mockReturnValue("generated-owner-jwt-token");
+
+            const result = await loginIn({ email: "owner@test.com", password: "password123" });
+
+            expect(bcrypt.compare).toHaveBeenCalledWith("password123", "hashed_password");
+            expect(jwt.sign).toHaveBeenCalledWith(
+                {
+                    sub: "owner-id",
+                    accountType: "USER",
+                    role: UserRole.OWNER
+                },
+                expect.any(String),
+                { expiresIn: "7d", algorithm: "HS256" }
+            );
+            expect(result).toEqual({ token: "generated-owner-jwt-token" });
+            expect(result).not.toHaveProperty("password");
+        });
+
+        it("should successfully login ADMIN user and generate JWT token", async () => {
+            (prisma.user.findFirst as jest.Mock).mockResolvedValue({
+                id: "admin-id",
+                name: "Admin Name",
+                email: "admin@test.com",
+                password: "hashed_password",
+                enterpriseId: "enterprise-id",
+                role: { role: UserRole.ADMIN }
+            });
+            (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+            (jwt.sign as jest.Mock).mockReturnValue("generated-admin-jwt-token");
+
+            const result = await loginIn({ email: "admin@test.com", password: "password123" });
+
+            expect(jwt.sign).toHaveBeenCalledWith(
+                {
+                    sub: "admin-id",
+                    accountType: "USER",
+                    role: UserRole.ADMIN
+                },
+                expect.any(String),
+                { expiresIn: "7d", algorithm: "HS256" }
+            );
+            expect(result).toEqual({ token: "generated-admin-jwt-token" });
+            expect(result).not.toHaveProperty("password");
+        });
+
+        it("should throw 401 Credenciais inválidas when user is not found", async () => {
+            (prisma.user.findFirst as jest.Mock).mockResolvedValue(null);
+
+            await expect(loginIn({ email: "nonexistent@test.com", password: "password123" }))
+                .rejects.toMatchObject({
+                    statusCode: 401,
+                    message: "Credenciais inválidas"
+                });
+        });
+
+        it("should throw 401 Credenciais inválidas when password does not match", async () => {
+            (prisma.user.findFirst as jest.Mock).mockResolvedValue({
+                id: "user-id",
+                name: "User",
+                email: "user@test.com",
+                password: "hashed_password",
+                enterpriseId: "enterprise-id",
+                role: { role: UserRole.OWNER }
+            });
+            (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+            await expect(loginIn({ email: "user@test.com", password: "wrongpassword" }))
+                .rejects.toMatchObject({
+                    statusCode: 401,
+                    message: "Credenciais inválidas"
+                });
         });
     });
 });

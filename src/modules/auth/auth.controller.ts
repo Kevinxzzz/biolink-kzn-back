@@ -9,7 +9,11 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
         const result = await loginIn(parsedData);
 
         return res.status(200).json(result);
-    } catch (error) {
+    } catch (error: any) {
+        if (error.name === "ZodError") {
+            next(new AppError("Dados inválidos", 400));
+            return;
+        }
         next(error);
     }
 }
