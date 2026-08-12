@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.loginIn = void 0;
+exports.registerEnterprise = exports.loginIn = void 0;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const env_1 = require("../../shared/config/env");
@@ -44,3 +44,48 @@ const loginIn = async ({ email, password }) => {
     };
 };
 exports.loginIn = loginIn;
+const registerEnterprise = async (data) => {
+    try {
+        const hashedPassword = await bcryptjs_1.default.hash(data.user.password, 10);
+        const result = await prisma_1.prisma.$transaction(async (tx) => {
+            const roleOwner = await tx.role.findFirst({
+                where: { role: "OWNER" }
+            });
+            if (!roleOwner) {
+                throw new appError_1.AppError("Internal Server Error", 500);
+            }
+            const newEnterprise = await tx.enterprise.create({
+                data: {
+                    name: data.company.name,
+                    email: data.company.email,
+                    phoneNumber: data.company.phone,
+                    createAt: new Date(),
+                    updateAt: new Date(),
+                }
+            });
+            const newUser = await tx.user.create({
+                data: {
+                    name: data.user.name,
+                    email: data.user.email,
+                    password: hashedPassword,
+                    enterpriseId: newEnterprise.id,
+                    roleId: roleOwner.id,
+                    createAt: new Date(),
+                    updateAt: new Date(),
+                }
+            });
+            return { enterpriseId: newEnterprise.id, userId: newUser.id };
+        });
+        return {
+            message: "Empresa criada com sucesso",
+            data: result
+        };
+    }
+    catch (error) {
+        if (error.code === 'P2002') {
+            throw new appError_1.AppError("Dados já cadastrados (email ou telefone)", 409);
+        }
+        throw error;
+    }
+};
+exports.registerEnterprise = registerEnterprise;
