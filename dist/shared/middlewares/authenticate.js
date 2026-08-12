@@ -1,41 +1,38 @@
-import { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
-import { env } from "../config/env";
-import { prisma } from "../database/prisma";
-import { AppError } from "../errors/appError";
-import type { TokenPayload, AuthenticatedUser } from "../types/token";
-
-export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.authenticate = void 0;
+const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const env_1 = require("../config/env");
+const prisma_1 = require("../database/prisma");
+const appError_1 = require("../errors/appError");
+const authenticate = async (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
-
         if (!authHeader) {
-            throw new AppError("Token não fornecido", 401);
+            throw new appError_1.AppError("Token não fornecido", 401);
         }
-
         const [, token] = authHeader.split(" ");
-
         if (!token) {
-            throw new AppError("Token inválido", 401);
+            throw new appError_1.AppError("Token inválido", 401);
         }
-
-        let payload: TokenPayload;
+        let payload;
         try {
-            payload = jwt.verify(token, env.JWT_SECRET!, {
+            payload = jsonwebtoken_1.default.verify(token, env_1.env.JWT_SECRET, {
                 algorithms: ["HS256"]
-            }) as TokenPayload;
-        } catch (error) {
-            throw new AppError("Token expirado ou inválido", 401);
+            });
         }
-
+        catch (error) {
+            throw new appError_1.AppError("Token expirado ou inválido", 401);
+        }
         if (payload.accountType !== "USER" && payload.accountType !== "INFLUENCER") {
-            throw new AppError("Token inválido", 401);
+            throw new appError_1.AppError("Token inválido", 401);
         }
-
-        let userRecord: AuthenticatedUser | null = null;
-
+        let userRecord = null;
         if (payload.accountType === "USER") {
-            const user = await prisma.user.findUnique({
+            const user = await prisma_1.prisma.user.findUnique({
                 where: { id: payload.sub },
                 select: {
                     id: true,
@@ -48,7 +45,6 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
                     }
                 }
             });
-
             if (user) {
                 userRecord = {
                     id: user.id,
@@ -58,12 +54,12 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
                     role: user.role.role
                 };
             }
-        } else if (payload.accountType === "INFLUENCER") {
-            const influencer = await prisma.influencer.findUnique({
+        }
+        else if (payload.accountType === "INFLUENCER") {
+            const influencer = await prisma_1.prisma.influencer.findUnique({
                 where: { id: payload.sub },
                 select: { id: true, email: true, enterpriseId: true }
             });
-
             if (influencer) {
                 userRecord = {
                     id: influencer.id,
@@ -73,14 +69,14 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
                 };
             }
         }
-
         if (!userRecord) {
-            throw new AppError("Usuário não encontrado", 401);
+            throw new appError_1.AppError("Usuário não encontrado", 401);
         }
-
         req.user = userRecord;
         return next();
-    } catch (error) {
+    }
+    catch (error) {
         return next(error);
     }
 };
+exports.authenticate = authenticate;

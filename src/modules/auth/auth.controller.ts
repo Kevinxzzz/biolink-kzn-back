@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { loginZod } from "../../shared/zod/auth.zod";
+import { loginIn } from "./auth.service";
 
 export const login = async (req: Request, res: Response, next: NextFunction) => {
     try {
