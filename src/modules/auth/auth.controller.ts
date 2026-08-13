@@ -11,7 +11,7 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
         return res.status(200).json(result);
     } catch (error: any) {
         if (error.name === "ZodError") {
-            next(new AppError("Dados inválidos", 400));
+            next(new AppError("Os dados informados são inválidos.", 400));
             return;
         }
         next(error);
@@ -34,7 +34,7 @@ export const registerCompany = async (req: Request, res: Response, next: NextFun
         return res.status(201).json(result);
     } catch (error: any) {
         if (error.name === "ZodError") {
-            next(new AppError("Dados inválidos", 400));
+            next(new AppError("Os dados informados são inválidos.", 400));
             return;
         }
         next(error);

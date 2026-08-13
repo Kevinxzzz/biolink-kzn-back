@@ -12,7 +12,7 @@ const login = async (req, res, next) => {
     }
     catch (error) {
         if (error.name === "ZodError") {
-            next(new appError_1.AppError("Dados inválidos", 400));
+            next(new appError_1.AppError("Os dados informados são inválidos.", 400));
             return;
         }
         next(error);
@@ -33,7 +33,7 @@ const registerCompany = async (req, res, next) => {
     }
     catch (error) {
         if (error.name === "ZodError") {
-            next(new appError_1.AppError("Dados inválidos", 400));
+            next(new appError_1.AppError("Os dados informados são inválidos.", 400));
             return;
         }
         next(error);

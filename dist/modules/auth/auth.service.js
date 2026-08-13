@@ -26,10 +26,10 @@ const loginIn = async ({ email, password }) => {
         }
     });
     if (!user)
-        throw new appError_1.AppError("Credenciais inválidas", 401);
+        throw new appError_1.AppError("E-mail ou senha inválidos.", 401);
     const passwordMatch = await bcryptjs_1.default.compare(password, user.password);
     if (!passwordMatch)
-        throw new appError_1.AppError("Credenciais inválidas", 401);
+        throw new appError_1.AppError("E-mail ou senha inválidos.", 401);
     const tokenPayload = {
         sub: user.id,
         accountType: "USER",
@@ -46,6 +46,15 @@ const loginIn = async ({ email, password }) => {
 exports.loginIn = loginIn;
 const registerEnterprise = async (data) => {
     try {
+        const existingCompanyEmail = await prisma_1.prisma.enterprise.findFirst({ where: { email: data.company.email } });
+        if (existingCompanyEmail)
+            throw new appError_1.AppError("E-mail da empresa já cadastrado.", 409);
+        const existingCompanyPhone = await prisma_1.prisma.enterprise.findFirst({ where: { phoneNumber: data.company.phone } });
+        if (existingCompanyPhone)
+            throw new appError_1.AppError("Telefone da empresa já cadastrado.", 409);
+        const existingUserEmail = await prisma_1.prisma.user.findFirst({ where: { email: data.user.email } });
+        if (existingUserEmail)
+            throw new appError_1.AppError("O e-mail informado para o usuário já está cadastrado.", 409);
         const hashedPassword = await bcryptjs_1.default.hash(data.user.password, 10);
         const result = await prisma_1.prisma.$transaction(async (tx) => {
             const roleOwner = await tx.role.findFirst({
@@ -82,8 +91,10 @@ const registerEnterprise = async (data) => {
         };
     }
     catch (error) {
+        if (error instanceof appError_1.AppError)
+            throw error;
         if (error.code === 'P2002') {
-            throw new appError_1.AppError("Dados já cadastrados (email ou telefone)", 409);
+            throw new appError_1.AppError("Dados já cadastrados no sistema.", 409);
         }
         throw error;
     }
