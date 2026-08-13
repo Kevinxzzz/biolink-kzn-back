@@ -23,11 +23,11 @@ export const loginIn = async ({ email, password }: LoginInput) => {
         }
     });
 
-    if (!user) throw new AppError("Credenciais inválidas", 401);
+    if (!user) throw new AppError("E-mail ou senha inválidos.", 401);
 
     const passwordMatch = await bcrypt.compare(password, user.password);
 
-    if (!passwordMatch) throw new AppError("Credenciais inválidas", 401);
+    if (!passwordMatch) throw new AppError("E-mail ou senha inválidos.", 401);
 
     const tokenPayload: import("../../shared/types/token").TokenPayload = {
         sub: user.id,
@@ -47,6 +47,15 @@ export const loginIn = async ({ email, password }: LoginInput) => {
 
 export const registerEnterprise = async (data: import("../../shared/types/auth.type").RegisterEnterpriseInput) => {
     try {
+        const existingCompanyEmail = await prisma.enterprise.findFirst({ where: { email: data.company.email } });
+        if (existingCompanyEmail) throw new AppError("E-mail da empresa já cadastrado.", 409);
+
+        const existingCompanyPhone = await prisma.enterprise.findFirst({ where: { phoneNumber: data.company.phone } });
+        if (existingCompanyPhone) throw new AppError("Telefone da empresa já cadastrado.", 409);
+
+        const existingUserEmail = await prisma.user.findFirst({ where: { email: data.user.email } });
+        if (existingUserEmail) throw new AppError("O e-mail informado para o usuário já está cadastrado.", 409);
+
         const hashedPassword = await bcrypt.hash(data.user.password, 10);
 
         const result = await prisma.$transaction(async (tx) => {
@@ -88,8 +97,10 @@ export const registerEnterprise = async (data: import("../../shared/types/auth.t
             data: result
         };
     } catch (error: any) {
+        if (error instanceof AppError) throw error;
+        
         if (error.code === 'P2002') {
-            throw new AppError("Dados já cadastrados (email ou telefone)", 409);
+            throw new AppError("Dados já cadastrados no sistema.", 409);
         }
         throw error;
     }

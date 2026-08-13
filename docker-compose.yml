@@ -12,6 +12,13 @@ services:
     env_file:
       - .env
 
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/biolink?schema=public
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+
+    command: sh -c "npx prisma db push && npx prisma db seed && npm run dev"
+
     depends_on:
       - postgres
       - redis

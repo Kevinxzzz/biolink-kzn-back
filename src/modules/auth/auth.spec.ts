@@ -12,6 +12,9 @@ jest.mock("../../shared/database/prisma", () => ({
         $transaction: jest.fn(),
         user: {
             findFirst: jest.fn()
+        },
+        enterprise: {
+            findFirst: jest.fn()
         }
     }
 }));
@@ -76,7 +79,7 @@ describe("Auth Module - Register Enterprise", () => {
             expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
             const error = mockNext.mock.calls[0][0];
             expect(error.statusCode).toBe(400);
-            expect(error.message).toBe("Dados inválidos");
+            expect(error.message).toBe("Os dados informados são inválidos.");
         });
 
         it("should omit confirmPassword and call service", async () => {
@@ -183,7 +186,67 @@ describe("Auth Module - Register Enterprise", () => {
 
             await expect(registerEnterprise(input)).rejects.toMatchObject({
                 statusCode: 409,
-                message: "Dados já cadastrados (email ou telefone)"
+                message: "Dados já cadastrados no sistema."
+            });
+        });
+
+        it("should throw 409 if company email already exists", async () => {
+            (prisma.enterprise.findFirst as jest.Mock).mockResolvedValueOnce({ id: "ent-exist" }); // mocks existingCompanyEmail
+
+            const input = {
+                company: mockReq.body.company,
+                user: {
+                    name: "Test User",
+                    email: "user@test.com",
+                    password: "password123"
+                }
+            };
+
+            await expect(registerEnterprise(input)).rejects.toMatchObject({
+                statusCode: 409,
+                message: "E-mail da empresa já cadastrado."
+            });
+        });
+
+        it("should throw 409 if company phone already exists", async () => {
+            (prisma.enterprise.findFirst as jest.Mock)
+                .mockResolvedValueOnce(null) // existingCompanyEmail
+                .mockResolvedValueOnce({ id: "ent-exist" }); // existingCompanyPhone
+
+            const input = {
+                company: mockReq.body.company,
+                user: {
+                    name: "Test User",
+                    email: "user@test.com",
+                    password: "password123"
+                }
+            };
+
+            await expect(registerEnterprise(input)).rejects.toMatchObject({
+                statusCode: 409,
+                message: "Telefone da empresa já cadastrado."
+            });
+        });
+
+        it("should throw 409 if user email already exists", async () => {
+            (prisma.enterprise.findFirst as jest.Mock)
+                .mockResolvedValueOnce(null) // existingCompanyEmail
+                .mockResolvedValueOnce(null); // existingCompanyPhone
+
+            (prisma.user.findFirst as jest.Mock).mockResolvedValueOnce({ id: "usr-exist" }); // existingUserEmail
+
+            const input = {
+                company: mockReq.body.company,
+                user: {
+                    name: "Test User",
+                    email: "user@test.com",
+                    password: "password123"
+                }
+            };
+
+            await expect(registerEnterprise(input)).rejects.toMatchObject({
+                statusCode: 409,
+                message: "O e-mail informado para o usuário já está cadastrado."
             });
         });
 
@@ -258,7 +321,7 @@ describe("Auth Module - Login", () => {
             expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
             const error = mockNext.mock.calls[0][0];
             expect(error.statusCode).toBe(400);
-            expect(error.message).toBe("Dados inválidos");
+            expect(error.message).toBe("Os dados informados são inválidos.");
         });
 
         it("should return 400 when password is missing", async () => {
@@ -269,7 +332,7 @@ describe("Auth Module - Login", () => {
             expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
             const error = mockNext.mock.calls[0][0];
             expect(error.statusCode).toBe(400);
-            expect(error.message).toBe("Dados inválidos");
+            expect(error.message).toBe("Os dados informados são inválidos.");
         });
     });
 
@@ -335,7 +398,7 @@ describe("Auth Module - Login", () => {
             await expect(loginIn({ email: "nonexistent@test.com", password: "password123" }))
                 .rejects.toMatchObject({
                     statusCode: 401,
-                    message: "Credenciais inválidas"
+                    message: "E-mail ou senha inválidos."
                 });
         });
 
@@ -353,7 +416,7 @@ describe("Auth Module - Login", () => {
             await expect(loginIn({ email: "user@test.com", password: "wrongpassword" }))
                 .rejects.toMatchObject({
                     statusCode: 401,
-                    message: "Credenciais inválidas"
+                    message: "E-mail ou senha inválidos."
                 });
         });
     });
