@@ -2,6 +2,16 @@ import { prisma } from "../../shared/database/prisma";
 import { AppError } from "../../shared/errors/appError";
 import type { CreateLinkInput, UpdateLinkInput, ReorderLinksInput } from "../../shared/zod/links.zod";
 
+const linkSelect = {
+    id: true,
+    title: true,
+    url: true,
+    countClicks: true,
+    active: true,
+    order: true,
+    inRotationPool: true,
+};
+
 export const createLink = async (enterpriseId: string, data: CreateLinkInput) => {
     return await prisma.$transaction(async (tx) => {
         // Bloqueio no nível da empresa para garantir concorrência segura na ordem
@@ -25,7 +35,8 @@ export const createLink = async (enterpriseId: string, data: CreateLinkInput) =>
                 enterpriseId,
                 createAt: new Date(),
                 updateAt: new Date()
-            }
+            },
+            select: linkSelect
         });
     });
 };
@@ -33,13 +44,15 @@ export const createLink = async (enterpriseId: string, data: CreateLinkInput) =>
 export const getLinks = async (enterpriseId: string) => {
     return await prisma.enterpriseUrl.findMany({
         where: { enterpriseId },
+        select: linkSelect,
         orderBy: { order: 'asc' }
     });
 };
 
 export const getLinkById = async (id: string, enterpriseId: string) => {
     const link = await prisma.enterpriseUrl.findFirst({
-        where: { id, enterpriseId }
+        where: { id, enterpriseId },
+        select: linkSelect
     });
     if (!link) throw new AppError("Link não encontrado", 404);
     return link;
@@ -56,7 +69,8 @@ export const updateLink = async (id: string, enterpriseId: string, data: UpdateL
         data: {
             ...data,
             updateAt: new Date()
-        }
+        },
+        select: linkSelect
     });
 };
 
@@ -102,7 +116,8 @@ export const activateLink = async (id: string, enterpriseId: string) => {
                     active: true,
                     countClicks: 0,
                     updateAt: new Date()
-                }
+                },
+                select: linkSelect
             });
         });
     } catch (error: any) {
@@ -144,7 +159,8 @@ export const reorderLinks = async (enterpriseId: string, { links }: ReorderLinks
         for (const link of links) {
             const updated = await tx.enterpriseUrl.update({
                 where: { id: link.id },
-                data: { order: link.order, updateAt: new Date() }
+                data: { order: link.order, updateAt: new Date() },
+                select: linkSelect
             });
             updatedLinks.push(updated);
         }
