@@ -7,7 +7,7 @@ exports.corsConfig = void 0;
 const cors_1 = __importDefault(require("cors"));
 const env_1 = require("../config/env");
 exports.corsConfig = (0, cors_1.default)({
-    origin: [env_1.env.DATABASE_URL, env_1.env.FRONTEND_URL_LOCAL],
+    origin: env_1.env.FRONTEND_URL,
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: false

@@ -6,6 +6,7 @@ import { hasRole } from "./hasRole";
 import { onlyUsers } from "./onlyUsers";
 import { onlyInfluencers } from "./onlyInfluencers";
 import { checkEnterprise } from "./checkEnterprise";
+import { errorHandler } from "./errorHandler";
 import { AppError } from "../errors/appError";
 import { prisma } from "../database/prisma";
 import { env } from "../config/env";
@@ -34,7 +35,10 @@ describe("Middlewares Layer Test Suite", () => {
             params: {},
             query: {}
         };
-        mockRes = {};
+        mockRes = {
+            status: jest.fn().mockReturnThis(),
+            json: jest.fn()
+        };
         mockNext = jest.fn();
         jest.clearAllMocks();
     });
@@ -327,6 +331,35 @@ describe("Middlewares Layer Test Suite", () => {
             const error = mockNext.mock.calls[0][0];
             expect(error.statusCode).toBe(403);
             expect(error.message).toBe("Acesso negado");
+        });
+    });
+
+    describe("errorHandler Middleware", () => {
+        it("should handle AppError with custom statusCode and message", () => {
+            const err = new AppError("Acesso não autorizado", 401);
+            errorHandler(err, mockReq as Request, mockRes as Response, mockNext);
+
+            expect(mockRes.status).toHaveBeenCalledWith(401);
+            expect(mockRes.json).toHaveBeenCalledWith({ message: "Acesso não autorizado" });
+        });
+
+        it("should handle AppError(400) Bad Request", () => {
+            const err = new AppError("Dados inválidos", 400);
+            errorHandler(err, mockReq as Request, mockRes as Response, mockNext);
+
+            expect(mockRes.status).toHaveBeenCalledWith(400);
+            expect(mockRes.json).toHaveBeenCalledWith({ message: "Dados inválidos" });
+        });
+
+        it("should handle unexpected errors with HTTP 500 and not expose stack trace", () => {
+            const err = new Error("Database connection crash with secret internal trace");
+            errorHandler(err, mockReq as Request, mockRes as Response, mockNext);
+
+            expect(mockRes.status).toHaveBeenCalledWith(500);
+            expect(mockRes.json).toHaveBeenCalledWith({ message: "Erro interno do servidor" });
+            const jsonArg = (mockRes.json as jest.Mock).mock.calls[0][0];
+            expect(jsonArg).not.toHaveProperty("stack");
+            expect(jsonArg).not.toHaveProperty("trace");
         });
     });
 });
