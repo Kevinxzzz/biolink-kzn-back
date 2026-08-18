@@ -163,7 +163,7 @@ model enterpriseUrl {
   countClicks    Int      @map("count_clicks")
   active         Boolean
   order          Int
-  inRotationPool Boolean  @map("in_rotation_pool")
+  inRotationPool Boolean  @default(true) @map("in_rotation_pool")
   enterpriseId   String   @map("enterprise_id") @db.Uuid
   createAt       DateTime @map("create_at")
   updateAt       DateTime @map("update_at")
@@ -171,6 +171,7 @@ model enterpriseUrl {
   enterprise        enterprise          @relation(fields: [enterpriseId], references: [id])
   toggleUrlSchedule toggleUrlSchedule[]
 
+  @@unique([url])
   @@map("enterprise_url")
 }
 
