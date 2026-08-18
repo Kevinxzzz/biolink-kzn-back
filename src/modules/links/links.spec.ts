@@ -1,0 +1,164 @@
+import { activateLink, reorderLinks, createLink, getLinks, getLinkById, updateLink, deleteLink } from "./links.service";
+import { prisma } from "../../shared/database/prisma";
+import { AppError } from "../../shared/errors/appError";
+import { reorderLinksZod } from "../../shared/zod/links.zod";
+
+jest.mock("../../shared/database/prisma", () => ({
+    prisma: {
+        $transaction: jest.fn(),
+        $executeRaw: jest.fn(),
+        enterpriseUrl: {
+            findFirst: jest.fn(),
+            findMany: jest.fn(),
+            create: jest.fn(),
+            update: jest.fn(),
+            updateMany: jest.fn(),
+            delete: jest.fn()
+        }
+    }
+}));
+
+describe("Links Module", () => {
+    let mockTx: any;
+
+    beforeEach(() => {
+        mockTx = {
+            $executeRaw: jest.fn(),
+            enterpriseUrl: {
+                findFirst: jest.fn(),
+                findMany: jest.fn(),
+                create: jest.fn(),
+                update: jest.fn(),
+                updateMany: jest.fn()
+            }
+        };
+
+        (prisma.$transaction as jest.Mock).mockImplementation(async (cb) => {
+            return await cb(mockTx);
+        });
+
+        jest.clearAllMocks();
+    });
+
+    describe("CRUD", () => {
+        it("deve criar um link e incrementar a ordem", async () => {
+            mockTx.enterpriseUrl.findFirst.mockResolvedValue({ order: 5 });
+            mockTx.enterpriseUrl.create.mockResolvedValue({ id: "link1", order: 6 });
+
+            const result = await createLink("ent1", { title: "Test", url: "http://test.com" });
+
+            expect(mockTx.enterpriseUrl.create).toHaveBeenCalledWith({
+                data: expect.objectContaining({ order: 6, enterpriseId: "ent1", countClicks: 0, active: false })
+            });
+            expect(result.order).toBe(6);
+        });
+
+        it("deve listar links com enterpriseId correto", async () => {
+            (prisma.enterpriseUrl.findMany as jest.Mock).mockResolvedValue([{ id: "link1" }]);
+            const result = await getLinks("ent1");
+            expect(prisma.enterpriseUrl.findMany).toHaveBeenCalledWith({
+                where: { enterpriseId: "ent1" },
+                orderBy: { order: "asc" }
+            });
+            expect(result.length).toBe(1);
+        });
+    });
+
+    describe("Ativação", () => {
+        it("deve ativar um link, desativar o atual e resetar countClicks", async () => {
+            mockTx.enterpriseUrl.findFirst.mockResolvedValue({ id: "link1", enterpriseId: "ent1", inRotationPool: true, countClicks: 800 });
+            mockTx.enterpriseUrl.updateMany.mockResolvedValue({ count: 1 });
+            mockTx.enterpriseUrl.update.mockResolvedValue({ id: "link1", active: true, countClicks: 0 });
+
+            const result = await activateLink("link1", "ent1");
+
+            expect(mockTx.enterpriseUrl.updateMany).toHaveBeenCalledWith({
+                where: { enterpriseId: "ent1", active: true },
+                data: { active: false, updateAt: expect.any(Date) }
+            });
+
+            expect(mockTx.enterpriseUrl.update).toHaveBeenCalledWith({
+                where: { id: "link1" },
+                data: { active: true, countClicks: 0, updateAt: expect.any(Date) }
+            });
+
+            expect(result.countClicks).toBe(0);
+        });
+
+        it("não permite ativar link inexistente ou de outra empresa", async () => {
+            mockTx.enterpriseUrl.findFirst.mockResolvedValue(null);
+
+            await expect(activateLink("link1", "ent1")).rejects.toMatchObject({
+                statusCode: 404,
+                message: "Link não encontrado ou pertence a outra empresa"
+            });
+        });
+
+        it("não permite ativar link que não esteja no pool de rotação", async () => {
+            mockTx.enterpriseUrl.findFirst.mockResolvedValue({ id: "link1", enterpriseId: "ent1", inRotationPool: false });
+
+            await expect(activateLink("link1", "ent1")).rejects.toMatchObject({
+                statusCode: 400,
+                message: "O link não está no pool de rotação e não pode ser ativado"
+            });
+        });
+
+        it("garante unicidade lidando com erro P2002 de concorrência", async () => {
+            const p2002Error = new Error("Unique constraint");
+            (p2002Error as any).code = "P2002";
+            (prisma.$transaction as jest.Mock).mockRejectedValue(p2002Error);
+
+            await expect(activateLink("link1", "ent1")).rejects.toMatchObject({
+                statusCode: 409,
+                message: "Conflito de concorrência: Apenas um link pode estar ativo"
+            });
+        });
+    });
+
+    describe("Reordenação", () => {
+        it("altera corretamente a ordem", async () => {
+            const payload = { links: [{ id: "l1", order: 2 }, { id: "l2", order: 1 }] };
+            mockTx.enterpriseUrl.findMany.mockResolvedValue([{ id: "l1" }, { id: "l2" }]);
+
+            await reorderLinks("ent1", payload);
+
+            expect(mockTx.enterpriseUrl.update).toHaveBeenCalledWith({
+                where: { id: "l1" }, data: { order: 2, updateAt: expect.any(Date) }
+            });
+            expect(mockTx.enterpriseUrl.update).toHaveBeenCalledWith({
+                where: { id: "l2" }, data: { order: 1, updateAt: expect.any(Date) }
+            });
+        });
+
+        it("rejeita IDs duplicados", async () => {
+            const payload = { links: [{ id: "l1", order: 1 }, { id: "l1", order: 2 }] };
+            await expect(reorderLinks("ent1", payload)).rejects.toMatchObject({
+                statusCode: 400,
+                message: "O payload não pode conter IDs duplicados"
+            });
+        });
+
+        it("rejeita orders duplicados", async () => {
+            const payload = { links: [{ id: "l1", order: 1 }, { id: "l2", order: 1 }] };
+            await expect(reorderLinks("ent1", payload)).rejects.toMatchObject({
+                statusCode: 400,
+                message: "O payload não pode conter ordens duplicadas"
+            });
+        });
+
+        it("rejeita link de outra empresa (quando não encontrado no findMany)", async () => {
+            const payload = { links: [{ id: "l1", order: 1 }, { id: "l2", order: 2 }] };
+            mockTx.enterpriseUrl.findMany.mockResolvedValue([{ id: "l1" }]); // Faltou o l2
+
+            await expect(reorderLinks("ent1", payload)).rejects.toMatchObject({
+                statusCode: 404,
+                message: "Alguns links não foram encontrados ou pertencem a outra empresa"
+            });
+        });
+        
+        it("rejeita payload inválido pelo Zod", () => {
+            const result = reorderLinksZod.safeParse({ links: [{ id: "not-uuid", order: -1 }] });
+            expect(result.success).toBe(false);
+        });
+    });
+});

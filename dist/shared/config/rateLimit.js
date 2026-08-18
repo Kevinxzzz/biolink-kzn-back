@@ -11,6 +11,6 @@ const handler = (req, res, next) => {
 };
 exports.authLimiter = (0, express_rate_limit_1.default)({
     windowMs: 60 * 5000,
-    max: 5,
+    max: 10,
     handler
 });
