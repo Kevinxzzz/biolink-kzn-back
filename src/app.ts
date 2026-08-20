@@ -5,6 +5,7 @@ import helmet from "helmet";
 
 import { authRoutes } from "./modules/auth/auth.router";
 import { linksRoutes } from "./modules/links/links.router";
+import { categoryRoutes } from "./modules/category/category.router";
 import { errorHandler } from "./shared/middlewares/errorHandler";
 
 const app = express();
@@ -24,6 +25,7 @@ app.use(express.json());
 
 app.use("/auth", authRoutes);
 app.use("/links", linksRoutes);
+app.use("/categories", categoryRoutes);
 
 app.use(errorHandler);
 
