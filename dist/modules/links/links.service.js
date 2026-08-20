@@ -3,12 +3,28 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.reorderLinks = exports.activateLink = exports.deleteLink = exports.updateLink = exports.getLinkById = exports.getLinks = exports.createLink = void 0;
 const prisma_1 = require("../../shared/database/prisma");
 const appError_1 = require("../../shared/errors/appError");
+const linkSelect = {
+    id: true,
+    title: true,
+    url: true,
+    countClicks: true,
+    active: true,
+    order: true,
+    inRotationPool: true,
+    categoryId: true,
+};
 const createLink = async (enterpriseId, data) => {
     return await prisma_1.prisma.$transaction(async (tx) => {
         // Bloqueio no nível da empresa para garantir concorrência segura na ordem
         await tx.$executeRaw `SELECT id FROM "enterprise" WHERE "id" = ${enterpriseId}::uuid FOR UPDATE`;
+        const categoryExists = await tx.enterpriseCategory.findFirst({
+            where: { id: data.categoryId, enterpriseId }
+        });
+        if (!categoryExists) {
+            throw new appError_1.AppError("Categoria não encontrada ou não pertence a esta empresa", 404);
+        }
         const maxOrderUrl = await tx.enterpriseUrl.findFirst({
-            where: { enterpriseId },
+            where: { enterpriseId, categoryId: data.categoryId },
             orderBy: { order: 'desc' }
         });
         const newOrder = maxOrderUrl ? maxOrderUrl.order + 1 : 1;
@@ -19,24 +35,29 @@ const createLink = async (enterpriseId, data) => {
                 order: newOrder,
                 active: false,
                 countClicks: 0,
+                inRotationPool: true,
                 enterpriseId,
+                categoryId: data.categoryId,
                 createAt: new Date(),
                 updateAt: new Date()
-            }
+            },
+            select: linkSelect
         });
     });
 };
 exports.createLink = createLink;
-const getLinks = async (enterpriseId) => {
+const getLinks = async (enterpriseId, categoryId) => {
     return await prisma_1.prisma.enterpriseUrl.findMany({
-        where: { enterpriseId },
-        orderBy: { order: 'asc' }
+        where: { enterpriseId, categoryId: categoryId || undefined },
+        select: linkSelect,
+        orderBy: [{ categoryId: 'asc' }, { order: 'asc' }]
     });
 };
 exports.getLinks = getLinks;
 const getLinkById = async (id, enterpriseId) => {
     const link = await prisma_1.prisma.enterpriseUrl.findFirst({
-        where: { id, enterpriseId }
+        where: { id, enterpriseId },
+        select: linkSelect
     });
     if (!link)
         throw new appError_1.AppError("Link não encontrado", 404);
@@ -54,7 +75,8 @@ const updateLink = async (id, enterpriseId, data) => {
         data: {
             ...data,
             updateAt: new Date()
-        }
+        },
+        select: linkSelect
     });
 };
 exports.updateLink = updateLink;
@@ -83,9 +105,9 @@ const activateLink = async (id, enterpriseId) => {
             if (!linkToActivate.inRotationPool) {
                 throw new appError_1.AppError("O link não está no pool de rotação e não pode ser ativado", 400);
             }
-            // Desativa todos os links ativos da empresa
+            // Desativa todos os links ativos da categoria
             await tx.enterpriseUrl.updateMany({
-                where: { enterpriseId, active: true },
+                where: { categoryId: linkToActivate.categoryId, active: true },
                 data: { active: false, updateAt: new Date() }
             });
             // Ativa o link e reseta os cliques
@@ -95,7 +117,8 @@ const activateLink = async (id, enterpriseId) => {
                     active: true,
                     countClicks: 0,
                     updateAt: new Date()
-                }
+                },
+                select: linkSelect
             });
         });
     }
@@ -107,7 +130,7 @@ const activateLink = async (id, enterpriseId) => {
     }
 };
 exports.activateLink = activateLink;
-const reorderLinks = async (enterpriseId, { links }) => {
+const reorderLinks = async (enterpriseId, { categoryId, links }) => {
     return await prisma_1.prisma.$transaction(async (tx) => {
         // Lock no nível da empresa
         await tx.$executeRaw `SELECT id FROM "enterprise" WHERE "id" = ${enterpriseId}::uuid FOR UPDATE`;
@@ -121,11 +144,17 @@ const reorderLinks = async (enterpriseId, { links }) => {
         if (uniqueOrders.size !== orders.length) {
             throw new appError_1.AppError("O payload não pode conter ordens duplicadas", 400);
         }
+        const totalLinksInCategory = await tx.enterpriseUrl.count({
+            where: { categoryId, enterpriseId }
+        });
+        if (links.length !== totalLinksInCategory) {
+            throw new appError_1.AppError("O payload deve conter a ordenação de todos os links da categoria", 400);
+        }
         const existingLinks = await tx.enterpriseUrl.findMany({
-            where: { id: { in: ids }, enterpriseId }
+            where: { id: { in: ids }, categoryId, enterpriseId }
         });
         if (existingLinks.length !== links.length) {
-            throw new appError_1.AppError("Alguns links não foram encontrados ou pertencem a outra empresa", 404);
+            throw new appError_1.AppError("Alguns links não foram encontrados, pertencem a outra empresa ou categoria diferente", 404);
         }
         // Fazer os updates
         // Uma forma segura para evitar unique constraint em caso futuro seria usar um UPDATE no lugar de iteração ou algo que diferencie, mas iteração serve bem por agora sem constraint explícita em order.
@@ -133,7 +162,8 @@ const reorderLinks = async (enterpriseId, { links }) => {
         for (const link of links) {
             const updated = await tx.enterpriseUrl.update({
                 where: { id: link.id },
-                data: { order: link.order, updateAt: new Date() }
+                data: { order: link.order, updateAt: new Date() },
+                select: linkSelect
             });
             updatedLinks.push(updated);
         }

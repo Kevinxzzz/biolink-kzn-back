@@ -22,7 +22,8 @@ export const create = async (req: Request, res: Response, next: NextFunction) =>
 export const list = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const enterpriseId = req.user!.enterpriseId;
-        const result = await linksService.getLinks(enterpriseId);
+        const categoryId = req.query.categoryId as string | undefined;
+        const result = await linksService.getLinks(enterpriseId, categoryId);
 
         return res.status(200).json({ data: result });
     } catch (error) {

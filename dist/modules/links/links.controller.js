@@ -55,7 +55,8 @@ exports.create = create;
 const list = async (req, res, next) => {
     try {
         const enterpriseId = req.user.enterpriseId;
-        const result = await linksService.getLinks(enterpriseId);
+        const categoryId = req.query.categoryId;
+        const result = await linksService.getLinks(enterpriseId, categoryId);
         return res.status(200).json({ data: result });
     }
     catch (error) {

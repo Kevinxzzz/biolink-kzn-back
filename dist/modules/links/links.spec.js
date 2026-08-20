@@ -7,7 +7,11 @@ jest.mock("../../shared/database/prisma", () => ({
     prisma: {
         $transaction: jest.fn(),
         $executeRaw: jest.fn(),
+        enterpriseCategory: {
+            findFirst: jest.fn(),
+        },
         enterpriseUrl: {
+            count: jest.fn(),
             findFirst: jest.fn(),
             findMany: jest.fn(),
             create: jest.fn(),
@@ -22,7 +26,11 @@ describe("Links Module", () => {
     beforeEach(() => {
         mockTx = {
             $executeRaw: jest.fn(),
+            enterpriseCategory: {
+                findFirst: jest.fn()
+            },
             enterpriseUrl: {
+                count: jest.fn(),
                 findFirst: jest.fn(),
                 findMany: jest.fn(),
                 create: jest.fn(),
@@ -37,11 +45,16 @@ describe("Links Module", () => {
     });
     describe("CRUD", () => {
         it("deve criar um link e incrementar a ordem", async () => {
+            mockTx.enterpriseCategory.findFirst.mockResolvedValue({ id: "cat1" });
             mockTx.enterpriseUrl.findFirst.mockResolvedValue({ order: 5 });
             mockTx.enterpriseUrl.create.mockResolvedValue({ id: "link1", order: 6 });
-            const result = await (0, links_service_1.createLink)("ent1", { title: "Test", url: "http://test.com" });
+            const result = await (0, links_service_1.createLink)("ent1", { title: "Test", url: "http://test.com", categoryId: "cat1" });
+            expect(mockTx.enterpriseCategory.findFirst).toHaveBeenCalledWith({
+                where: { id: "cat1", enterpriseId: "ent1" }
+            });
             expect(mockTx.enterpriseUrl.create).toHaveBeenCalledWith({
-                data: expect.objectContaining({ order: 6, enterpriseId: "ent1", countClicks: 0, active: false })
+                data: expect.objectContaining({ order: 6, enterpriseId: "ent1", categoryId: "cat1", countClicks: 0, active: false }),
+                select: expect.any(Object)
             });
             expect(result.order).toBe(6);
         });
@@ -49,25 +62,27 @@ describe("Links Module", () => {
             prisma_1.prisma.enterpriseUrl.findMany.mockResolvedValue([{ id: "link1" }]);
             const result = await (0, links_service_1.getLinks)("ent1");
             expect(prisma_1.prisma.enterpriseUrl.findMany).toHaveBeenCalledWith({
-                where: { enterpriseId: "ent1" },
-                orderBy: { order: "asc" }
+                where: { enterpriseId: "ent1", categoryId: undefined },
+                select: expect.any(Object),
+                orderBy: [{ categoryId: "asc" }, { order: "asc" }]
             });
             expect(result.length).toBe(1);
         });
     });
     describe("Ativação", () => {
         it("deve ativar um link, desativar o atual e resetar countClicks", async () => {
-            mockTx.enterpriseUrl.findFirst.mockResolvedValue({ id: "link1", enterpriseId: "ent1", inRotationPool: true, countClicks: 800 });
+            mockTx.enterpriseUrl.findFirst.mockResolvedValue({ id: "link1", categoryId: "cat1", enterpriseId: "ent1", inRotationPool: true, countClicks: 800 });
             mockTx.enterpriseUrl.updateMany.mockResolvedValue({ count: 1 });
             mockTx.enterpriseUrl.update.mockResolvedValue({ id: "link1", active: true, countClicks: 0 });
             const result = await (0, links_service_1.activateLink)("link1", "ent1");
             expect(mockTx.enterpriseUrl.updateMany).toHaveBeenCalledWith({
-                where: { enterpriseId: "ent1", active: true },
+                where: { categoryId: "cat1", active: true },
                 data: { active: false, updateAt: expect.any(Date) }
             });
             expect(mockTx.enterpriseUrl.update).toHaveBeenCalledWith({
                 where: { id: "link1" },
-                data: { active: true, countClicks: 0, updateAt: expect.any(Date) }
+                data: { active: true, countClicks: 0, updateAt: expect.any(Date) },
+                select: expect.any(Object)
             });
             expect(result.countClicks).toBe(0);
         });
@@ -97,36 +112,48 @@ describe("Links Module", () => {
     });
     describe("Reordenação", () => {
         it("altera corretamente a ordem", async () => {
-            const payload = { links: [{ id: "l1", order: 2 }, { id: "l2", order: 1 }] };
+            const payload = { categoryId: "cat1", links: [{ id: "l1", order: 2 }, { id: "l2", order: 1 }] };
+            mockTx.enterpriseUrl.count.mockResolvedValue(2);
             mockTx.enterpriseUrl.findMany.mockResolvedValue([{ id: "l1" }, { id: "l2" }]);
             await (0, links_service_1.reorderLinks)("ent1", payload);
             expect(mockTx.enterpriseUrl.update).toHaveBeenCalledWith({
-                where: { id: "l1" }, data: { order: 2, updateAt: expect.any(Date) }
+                where: { id: "l1" }, data: { order: 2, updateAt: expect.any(Date) },
+                select: expect.any(Object)
             });
             expect(mockTx.enterpriseUrl.update).toHaveBeenCalledWith({
-                where: { id: "l2" }, data: { order: 1, updateAt: expect.any(Date) }
+                where: { id: "l2" }, data: { order: 1, updateAt: expect.any(Date) },
+                select: expect.any(Object)
             });
         });
         it("rejeita IDs duplicados", async () => {
-            const payload = { links: [{ id: "l1", order: 1 }, { id: "l1", order: 2 }] };
+            const payload = { categoryId: "cat1", links: [{ id: "l1", order: 1 }, { id: "l1", order: 2 }] };
             await expect((0, links_service_1.reorderLinks)("ent1", payload)).rejects.toMatchObject({
                 statusCode: 400,
                 message: "O payload não pode conter IDs duplicados"
             });
         });
         it("rejeita orders duplicados", async () => {
-            const payload = { links: [{ id: "l1", order: 1 }, { id: "l2", order: 1 }] };
+            const payload = { categoryId: "cat1", links: [{ id: "l1", order: 1 }, { id: "l2", order: 1 }] };
             await expect((0, links_service_1.reorderLinks)("ent1", payload)).rejects.toMatchObject({
                 statusCode: 400,
                 message: "O payload não pode conter ordens duplicadas"
             });
         });
+        it("rejeita reorder incompleto da categoria", async () => {
+            const payload = { categoryId: "cat1", links: [{ id: "l1", order: 1 }] };
+            mockTx.enterpriseUrl.count.mockResolvedValue(2); // DB has 2 links
+            await expect((0, links_service_1.reorderLinks)("ent1", payload)).rejects.toMatchObject({
+                statusCode: 400,
+                message: "O payload deve conter a ordenação de todos os links da categoria"
+            });
+        });
         it("rejeita link de outra empresa (quando não encontrado no findMany)", async () => {
-            const payload = { links: [{ id: "l1", order: 1 }, { id: "l2", order: 2 }] };
+            const payload = { categoryId: "cat1", links: [{ id: "l1", order: 1 }, { id: "l2", order: 2 }] };
+            mockTx.enterpriseUrl.count.mockResolvedValue(2);
             mockTx.enterpriseUrl.findMany.mockResolvedValue([{ id: "l1" }]); // Faltou o l2
             await expect((0, links_service_1.reorderLinks)("ent1", payload)).rejects.toMatchObject({
                 statusCode: 404,
-                message: "Alguns links não foram encontrados ou pertencem a outra empresa"
+                message: "Alguns links não foram encontrados, pertencem a outra empresa ou categoria diferente"
             });
         });
         it("rejeita payload inválido pelo Zod", () => {
