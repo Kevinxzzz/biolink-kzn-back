@@ -46,7 +46,8 @@ const create = async (req, res, next) => {
     }
     catch (error) {
         if (error.name === "ZodError") {
-            return next(new appError_1.AppError("Os dados informados são inválidos.", 400));
+            const message = error.issues?.[0]?.message || "Os dados informados são inválidos.";
+            return next(new appError_1.AppError(message, 400));
         }
         next(error);
     }
@@ -86,7 +87,8 @@ const update = async (req, res, next) => {
     }
     catch (error) {
         if (error.name === "ZodError") {
-            return next(new appError_1.AppError("Os dados informados são inválidos.", 400));
+            const message = error.issues?.[0]?.message || "Os dados informados são inválidos.";
+            return next(new appError_1.AppError(message, 400));
         }
         next(error);
     }
@@ -125,7 +127,8 @@ const reorder = async (req, res, next) => {
     }
     catch (error) {
         if (error.name === "ZodError") {
-            return next(new appError_1.AppError("Os dados informados são inválidos.", 400));
+            const message = error.issues?.[0]?.message || "Os dados informados são inválidos.";
+            return next(new appError_1.AppError(message, 400));
         }
         next(error);
     }

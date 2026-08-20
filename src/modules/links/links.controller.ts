@@ -13,7 +13,8 @@ export const create = async (req: Request, res: Response, next: NextFunction) =>
         return res.status(201).json({ data: result });
     } catch (error: any) {
         if (error.name === "ZodError") {
-            return next(new AppError("Os dados informados são inválidos.", 400));
+            const message = error.issues?.[0]?.message || "Os dados informados são inválidos.";
+            return next(new AppError(message, 400));
         }
         next(error);
     }
@@ -55,7 +56,8 @@ export const update = async (req: Request, res: Response, next: NextFunction) =>
         return res.status(200).json({ data: result });
     } catch (error: any) {
         if (error.name === "ZodError") {
-            return next(new AppError("Os dados informados são inválidos.", 400));
+            const message = error.issues?.[0]?.message || "Os dados informados são inválidos.";
+            return next(new AppError(message, 400));
         }
         next(error);
     }
@@ -97,7 +99,8 @@ export const reorder = async (req: Request, res: Response, next: NextFunction) =
         return res.status(200).json({ data: result });
     } catch (error: any) {
         if (error.name === "ZodError") {
-            return next(new AppError("Os dados informados são inválidos.", 400));
+            const message = error.issues?.[0]?.message || "Os dados informados são inválidos.";
+            return next(new AppError(message, 400));
         }
         next(error);
     }

@@ -50,14 +50,14 @@ describe("Links Module", () => {
 
     describe("CRUD", () => {
         it("deve criar um link e incrementar a ordem", async () => {
-            mockTx.enterpriseCategory.findFirst.mockResolvedValue({ id: "cat1" });
+            mockTx.enterpriseCategory.findFirst.mockResolvedValue({ id: "cat1", name: "efootball" });
             mockTx.enterpriseUrl.findFirst.mockResolvedValue({ order: 5 });
             mockTx.enterpriseUrl.create.mockResolvedValue({ id: "link1", order: 6 });
 
-            const result = await createLink("ent1", { title: "Test", url: "http://test.com", categoryId: "cat1" });
+            const result = await createLink("ent1", { title: "Test", url: "http://test.com" });
 
             expect(mockTx.enterpriseCategory.findFirst).toHaveBeenCalledWith({
-                where: { id: "cat1", enterpriseId: "ent1" }
+                where: { name: "efootball" }
             });
 
             expect(mockTx.enterpriseUrl.create).toHaveBeenCalledWith({
