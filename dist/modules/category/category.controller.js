@@ -33,15 +33,15 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.reorder = exports.activate = exports.remove = exports.update = exports.getById = exports.list = exports.create = void 0;
+exports.remove = exports.update = exports.getById = exports.list = exports.create = void 0;
 const appError_1 = require("../../shared/errors/appError");
-const links_zod_1 = require("../../shared/zod/links.zod");
-const linksService = __importStar(require("./links.service"));
+const category_zod_1 = require("../../shared/zod/category.zod");
+const categoryService = __importStar(require("./category.service"));
 const create = async (req, res, next) => {
     try {
-        const parsedData = links_zod_1.createLinkZod.parse(req.body);
+        const parsedData = category_zod_1.createCategoryZod.parse(req.body);
         const enterpriseId = req.user.enterpriseId;
-        const result = await linksService.createLink(enterpriseId, parsedData);
+        const result = await categoryService.createCategory(enterpriseId, parsedData);
         return res.status(201).json({ data: result });
     }
     catch (error) {
@@ -55,8 +55,7 @@ exports.create = create;
 const list = async (req, res, next) => {
     try {
         const enterpriseId = req.user.enterpriseId;
-        const categoryId = req.query.categoryId;
-        const result = await linksService.getLinks(enterpriseId, categoryId);
+        const result = await categoryService.getCategories(enterpriseId);
         return res.status(200).json({ data: result });
     }
     catch (error) {
@@ -68,7 +67,7 @@ const getById = async (req, res, next) => {
     try {
         const enterpriseId = req.user.enterpriseId;
         const id = req.params.id;
-        const result = await linksService.getLinkById(id, enterpriseId);
+        const result = await categoryService.getCategoryById(id, enterpriseId);
         return res.status(200).json({ data: result });
     }
     catch (error) {
@@ -78,10 +77,10 @@ const getById = async (req, res, next) => {
 exports.getById = getById;
 const update = async (req, res, next) => {
     try {
-        const parsedData = links_zod_1.updateLinkZod.parse(req.body);
+        const parsedData = category_zod_1.updateCategoryZod.parse(req.body);
         const enterpriseId = req.user.enterpriseId;
         const id = req.params.id;
-        const result = await linksService.updateLink(id, enterpriseId, parsedData);
+        const result = await categoryService.updateCategory(id, enterpriseId, parsedData);
         return res.status(200).json({ data: result });
     }
     catch (error) {
@@ -96,7 +95,7 @@ const remove = async (req, res, next) => {
     try {
         const enterpriseId = req.user.enterpriseId;
         const id = req.params.id;
-        await linksService.deleteLink(id, enterpriseId);
+        await categoryService.deleteCategory(id, enterpriseId);
         return res.status(204).send();
     }
     catch (error) {
@@ -104,30 +103,3 @@ const remove = async (req, res, next) => {
     }
 };
 exports.remove = remove;
-const activate = async (req, res, next) => {
-    try {
-        const enterpriseId = req.user.enterpriseId;
-        const id = req.params.id;
-        const result = await linksService.activateLink(id, enterpriseId);
-        return res.status(200).json({ data: result });
-    }
-    catch (error) {
-        next(error);
-    }
-};
-exports.activate = activate;
-const reorder = async (req, res, next) => {
-    try {
-        const parsedData = links_zod_1.reorderLinksZod.parse(req.body);
-        const enterpriseId = req.user.enterpriseId;
-        const result = await linksService.reorderLinks(enterpriseId, parsedData);
-        return res.status(200).json({ data: result });
-    }
-    catch (error) {
-        if (error.name === "ZodError") {
-            return next(new appError_1.AppError("Os dados informados são inválidos.", 400));
-        }
-        next(error);
-    }
-};
-exports.reorder = reorder;
