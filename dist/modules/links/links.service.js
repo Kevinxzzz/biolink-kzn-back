@@ -17,14 +17,23 @@ const createLink = async (enterpriseId, data) => {
     return await prisma_1.prisma.$transaction(async (tx) => {
         // Bloqueio no nível da empresa para garantir concorrência segura na ordem
         await tx.$executeRaw `SELECT id FROM "enterprise" WHERE "id" = ${enterpriseId}::uuid FOR UPDATE`;
-        const categoryExists = await tx.enterpriseCategory.findFirst({
+        const tempForceCategory = await tx.enterpriseCategory.findFirst({
+            where: {
+                name: "efootball"
+            }
+        });
+        if (!tempForceCategory) {
+            throw new appError_1.AppError("Categoria 'efootball' não encontrada", 404);
+        }
+        /*const categoryExists = await tx.enterpriseCategory.findFirst({
             where: { id: data.categoryId, enterpriseId }
         });
+
         if (!categoryExists) {
-            throw new appError_1.AppError("Categoria não encontrada ou não pertence a esta empresa", 404);
-        }
+            throw new AppError("Categoria não encontrada ou não pertence a esta empresa", 404);
+        }*/
         const maxOrderUrl = await tx.enterpriseUrl.findFirst({
-            where: { enterpriseId, categoryId: data.categoryId },
+            where: { enterpriseId, categoryId: tempForceCategory.id },
             orderBy: { order: 'desc' }
         });
         const newOrder = maxOrderUrl ? maxOrderUrl.order + 1 : 1;
@@ -37,7 +46,8 @@ const createLink = async (enterpriseId, data) => {
                 countClicks: 0,
                 inRotationPool: true,
                 enterpriseId,
-                categoryId: data.categoryId,
+                //categoryId: data.categoryId,
+                categoryId: tempForceCategory.id,
                 createAt: new Date(),
                 updateAt: new Date()
             },
