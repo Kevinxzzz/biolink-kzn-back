@@ -41,7 +41,9 @@ const hasRole_1 = require("../../shared/middlewares/hasRole");
 const linksController = __importStar(require("./links.controller"));
 const linksRoutes = (0, express_1.Router)();
 exports.linksRoutes = linksRoutes;
-// Middleware aplicado a todas as rotas do módulo de links
+// Rota pública para redirecionamento e contabilização de cliques
+linksRoutes.get("/redirect/:enterpriseId/:categoryId", linksController.redirect);
+// Middleware aplicado a todas as rotas do módulo de links (autenticadas)
 linksRoutes.use(authenticate_1.authenticate);
 linksRoutes.use((0, hasRole_1.hasRole)(client_1.UserRole.OWNER, client_1.UserRole.ADMIN));
 linksRoutes.post("/", linksController.create);

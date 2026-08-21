@@ -105,3 +105,16 @@ export const reorder = async (req: Request, res: Response, next: NextFunction) =
         next(error);
     }
 };
+
+export const redirect = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const enterpriseId = req.params.enterpriseId as string;
+        const categoryId = req.params.categoryId as string;
+
+        const url = await linksService.processClickAndRedirect(enterpriseId, categoryId);
+
+        return res.redirect(url);
+    } catch (error) {
+        next(error);
+    }
+};

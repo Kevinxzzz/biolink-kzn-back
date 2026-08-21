@@ -6,7 +6,10 @@ import * as linksController from "./links.controller";
 
 const linksRoutes = Router();
 
-// Middleware aplicado a todas as rotas do módulo de links
+// Rota pública para redirecionamento e contabilização de cliques
+linksRoutes.get("/redirect/:enterpriseId/:categoryId", linksController.redirect);
+
+// Middleware aplicado a todas as rotas do módulo de links (autenticadas)
 linksRoutes.use(authenticate);
 linksRoutes.use(hasRole(UserRole.OWNER, UserRole.ADMIN));
 
