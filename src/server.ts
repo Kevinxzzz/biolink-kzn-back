@@ -2,6 +2,10 @@ import app from "./app";
 import { env } from "./shared/config/env";
 import { prisma, pool } from "./shared/database/prisma";
 
+import { startConsolidationWorker } from "./modules/cronIncrement/cronIncrement.worker";
+
+startConsolidationWorker();
+
 const server = app.listen(env.PORT, () => {
     console.log(`🚀 Server running on port ${env.PORT}`);
 });
