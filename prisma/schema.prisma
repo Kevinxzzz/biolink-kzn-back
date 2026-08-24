@@ -207,7 +207,7 @@ model enterpriseCategory {
 
 model categoryRotation {
   id             String     @id @default(uuid()) @db.Uuid
-  toggleType     ToggleType @map("toggle_type")
+  toggleType     ToggleType @default(MANUAL) @map("toggle_type")
   limitClicks    Int?       @map("limit_clicks")
   timerInMinutes Int?       @map("timer_in_minutes")
   timerStartedAt DateTime?  @map("timer_started_at")

@@ -11,14 +11,23 @@ const categorySelect = {
 };
 const createCategory = async (enterpriseId, data) => {
     try {
-        return await prisma_1.prisma.enterpriseCategory.create({
-            data: {
-                name: data.name,
-                enterpriseId,
-                createAt: new Date(),
-                updateAt: new Date()
-            },
-            select: categorySelect
+        return await prisma_1.prisma.$transaction(async (tx) => {
+            const newCategory = await tx.enterpriseCategory.create({
+                data: {
+                    name: data.name,
+                    enterpriseId,
+                    createAt: new Date(),
+                    updateAt: new Date()
+                },
+                select: categorySelect
+            });
+            await tx.categoryRotation.create({
+                data: {
+                    categoryId: newCategory.id,
+                    updateAt: new Date()
+                }
+            });
+            return newCategory;
         });
     }
     catch (error) {

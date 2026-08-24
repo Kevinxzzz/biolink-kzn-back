@@ -1,8 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.reorderLinks = exports.activateLink = exports.deleteLink = exports.updateLink = exports.getLinkById = exports.getLinks = exports.createLink = void 0;
+exports.processClickAndRedirect = exports.reorderLinks = exports.activateLink = exports.deleteLink = exports.updateLink = exports.getLinkById = exports.getLinks = exports.createLink = void 0;
 const prisma_1 = require("../../shared/database/prisma");
 const appError_1 = require("../../shared/errors/appError");
+const redis_1 = require("../../shared/database/redis");
+const linkUtils_1 = require("../../shared/utils/linkUtils");
 const linkSelect = {
     id: true,
     title: true,
@@ -181,3 +183,67 @@ const reorderLinks = async (enterpriseId, { categoryId, links }) => {
     });
 };
 exports.reorderLinks = reorderLinks;
+const processClickAndRedirect = async (enterpriseId, categoryId) => {
+    // 1. Busca Inicial
+    const link = await prisma_1.prisma.enterpriseUrl.findFirst({
+        where: { enterpriseId, categoryId, active: true },
+    });
+    if (!link) {
+        throw new appError_1.AppError("Nenhum link ativo encontrado para esta categoria.", 404);
+    }
+    const config = await prisma_1.prisma.categoryRotation.findFirst({
+        where: { categoryId }
+    });
+    const key = `clicks:${enterpriseId}:${categoryId}`;
+    // 2. Consultar Cliques no Redis (sem incrementar)
+    const redisCountStr = await redis_1.redis.get(key);
+    const redisCount = redisCountStr ? parseInt(redisCountStr, 10) : 0;
+    // 3. Avaliação LIMITCLICKS
+    if (config?.toggleType === "LIMITCLICKS" && config.limitClicks) {
+        const total = link.countClicks + redisCount + 1; // +1 é o clique atual
+        if (total >= config.limitClicks) {
+            // Fluxo de Rotação
+            const result = await prisma_1.prisma.$transaction(async (tx) => {
+                // Lock na categoria
+                await tx.$executeRaw `SELECT id FROM "enterprise_category" WHERE "id" = ${categoryId}::uuid FOR UPDATE`;
+                // Double-check
+                const currentActive = await tx.enterpriseUrl.findFirst({
+                    where: { enterpriseId, categoryId, active: true }
+                });
+                // Se não for mais o mesmo link, outra request rotacionou
+                if (currentActive?.id !== link.id) {
+                    return { rotatedByUs: false, link: currentActive || link };
+                }
+                // SIM, ainda é o mesmo link. Buscar próximo link elegível.
+                const nextLink = await (0, linkUtils_1.getNextEligibleLink)(tx, enterpriseId, categoryId, link);
+                // Se NÃO EXISTE próximo link elegível
+                if (!nextLink) {
+                    return { rotatedByUs: false, link };
+                }
+                // EXISTE próximo link
+                await tx.enterpriseUrl.update({
+                    where: { id: link.id },
+                    data: { active: false, countClicks: total, updateAt: new Date() }
+                });
+                const activatedLink = await tx.enterpriseUrl.update({
+                    where: { id: nextLink.id },
+                    data: { active: true, countClicks: 0, updateAt: new Date() }
+                });
+                return { rotatedByUs: true, link: activatedLink };
+            });
+            if (result.rotatedByUs) {
+                // Seta para 1 pois este clique vai para o NOVO link recém-ativado
+                await redis_1.redis.set(key, 1);
+            }
+            else {
+                // Ou a transação não rolou por falta de link, ou outra thread já rotacionou
+                await redis_1.redis.incr(key);
+            }
+            return result.link.url;
+        }
+    }
+    // 4. Fluxo Normal
+    await redis_1.redis.incr(key);
+    return link.url;
+};
+exports.processClickAndRedirect = processClickAndRedirect;

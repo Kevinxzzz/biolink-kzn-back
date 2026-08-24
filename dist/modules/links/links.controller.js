@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.reorder = exports.activate = exports.remove = exports.update = exports.getById = exports.list = exports.create = void 0;
+exports.redirect = exports.reorder = exports.activate = exports.remove = exports.update = exports.getById = exports.list = exports.create = void 0;
 const appError_1 = require("../../shared/errors/appError");
 const links_zod_1 = require("../../shared/zod/links.zod");
 const linksService = __importStar(require("./links.service"));
@@ -134,3 +134,15 @@ const reorder = async (req, res, next) => {
     }
 };
 exports.reorder = reorder;
+const redirect = async (req, res, next) => {
+    try {
+        const enterpriseId = req.params.enterpriseId;
+        const categoryId = req.params.categoryId;
+        const url = await linksService.processClickAndRedirect(enterpriseId, categoryId);
+        return res.redirect(url);
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.redirect = redirect;

@@ -1,5 +1,6 @@
-import { activateLink, reorderLinks, createLink, getLinks, getLinkById, updateLink, deleteLink } from "./links.service";
+import { activateLink, reorderLinks, createLink, getLinks, getLinkById, updateLink, deleteLink, processClickAndRedirect } from "./links.service";
 import { prisma } from "../../shared/database/prisma";
+import { redis } from "../../shared/database/redis";
 import { AppError } from "../../shared/errors/appError";
 import { reorderLinksZod } from "../../shared/zod/links.zod";
 
@@ -18,7 +19,18 @@ jest.mock("../../shared/database/prisma", () => ({
             update: jest.fn(),
             updateMany: jest.fn(),
             delete: jest.fn()
+        },
+        categoryRotation: {
+            findFirst: jest.fn()
         }
+    }
+}));
+
+jest.mock("../../shared/database/redis", () => ({
+    redis: {
+        get: jest.fn(),
+        set: jest.fn(),
+        incr: jest.fn()
     }
 }));
 
@@ -189,6 +201,88 @@ describe("Links Module", () => {
         it("rejeita payload inválido pelo Zod", () => {
             const result = reorderLinksZod.safeParse({ links: [{ id: "not-uuid", order: -1 }] });
             expect(result.success).toBe(false);
+        });
+    });
+
+    describe("Redirecionamento e Rotação", () => {
+        beforeEach(() => {
+            jest.clearAllMocks();
+        });
+
+        it("deve retornar o link ativo e incrementar no Redis (Fluxo Normal)", async () => {
+            (prisma.enterpriseUrl.findFirst as jest.Mock).mockResolvedValue({ id: "link1", url: "http://link1.com", countClicks: 10 });
+            (prisma.categoryRotation.findFirst as jest.Mock).mockResolvedValue({ toggleType: "MANUAL" });
+            (redis.get as jest.Mock).mockResolvedValue("5");
+
+            const url = await processClickAndRedirect("ent1", "cat1");
+
+            expect(redis.get).toHaveBeenCalledWith("clicks:ent1:cat1");
+            expect(redis.incr).toHaveBeenCalledWith("clicks:ent1:cat1");
+            expect(url).toBe("http://link1.com");
+        });
+
+        it("deve rotacionar quando LIMITCLICKS for atingido", async () => {
+            (prisma.enterpriseUrl.findFirst as jest.Mock).mockResolvedValue({ id: "link1", url: "http://link1.com", countClicks: 80, order: 1 });
+            (prisma.categoryRotation.findFirst as jest.Mock).mockResolvedValue({ toggleType: "LIMITCLICKS", limitClicks: 100 });
+            (redis.get as jest.Mock).mockResolvedValue("19"); // 80 + 19 + 1 = 100
+
+            mockTx.enterpriseUrl.findFirst.mockResolvedValue({ id: "link1" }); // Double check: ainda é o mesmo
+            mockTx.enterpriseUrl.findMany.mockResolvedValue([
+                { id: "link1", order: 1 },
+                { id: "link2", url: "http://link2.com", order: 2 }
+            ]);
+            mockTx.enterpriseUrl.update.mockImplementation(({ data }: any) => {
+                if (data.active) return { id: "link2", url: "http://link2.com" }; // return activated link
+                return { id: "link1" };
+            });
+
+            const url = await processClickAndRedirect("ent1", "cat1");
+
+            expect(mockTx.$executeRaw).toHaveBeenCalled();
+            expect(mockTx.enterpriseUrl.update).toHaveBeenCalledWith({
+                where: { id: "link1" },
+                data: { active: false, countClicks: 100, updateAt: expect.any(Date) } // consolidado
+            });
+            expect(mockTx.enterpriseUrl.update).toHaveBeenCalledWith({
+                where: { id: "link2" },
+                data: { active: true, countClicks: 0, updateAt: expect.any(Date) } // zerado
+            });
+            expect(redis.set).toHaveBeenCalledWith("clicks:ent1:cat1", 1);
+            expect(url).toBe("http://link2.com");
+        });
+
+        it("NÃO deve rotacionar se double-check indicar que o link mudou (concorrência)", async () => {
+            (prisma.enterpriseUrl.findFirst as jest.Mock).mockResolvedValue({ id: "link1", url: "http://link1.com", countClicks: 99, order: 1 });
+            (prisma.categoryRotation.findFirst as jest.Mock).mockResolvedValue({ toggleType: "LIMITCLICKS", limitClicks: 100 });
+            (redis.get as jest.Mock).mockResolvedValue("0"); 
+
+            // Double check: agora o link2 está ativo! Alguém já rotacionou.
+            mockTx.enterpriseUrl.findFirst.mockResolvedValue({ id: "link2", url: "http://link2.com" });
+
+            const url = await processClickAndRedirect("ent1", "cat1");
+
+            // Não deve ter update
+            expect(mockTx.enterpriseUrl.update).not.toHaveBeenCalled();
+            // E faz apenas incr
+            expect(redis.incr).toHaveBeenCalledWith("clicks:ent1:cat1");
+            expect(url).toBe("http://link2.com");
+        });
+
+        it("deve apenas incrementar no Redis se não houver próximo link elegível", async () => {
+            (prisma.enterpriseUrl.findFirst as jest.Mock).mockResolvedValue({ id: "link1", url: "http://link1.com", countClicks: 99, order: 1 });
+            (prisma.categoryRotation.findFirst as jest.Mock).mockResolvedValue({ toggleType: "LIMITCLICKS", limitClicks: 100 });
+            (redis.get as jest.Mock).mockResolvedValue("0"); 
+
+            mockTx.enterpriseUrl.findFirst.mockResolvedValue({ id: "link1" });
+            mockTx.enterpriseUrl.findMany.mockResolvedValue([
+                { id: "link1", order: 1 } // Apenas ele mesmo
+            ]);
+
+            const url = await processClickAndRedirect("ent1", "cat1");
+
+            expect(mockTx.enterpriseUrl.update).not.toHaveBeenCalled(); // Não alterou nada no BD
+            expect(redis.incr).toHaveBeenCalledWith("clicks:ent1:cat1");
+            expect(url).toBe("http://link1.com");
         });
     });
 });

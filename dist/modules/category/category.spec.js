@@ -5,26 +5,50 @@ const prisma_1 = require("../../shared/database/prisma");
 const category_zod_1 = require("../../shared/zod/category.zod");
 jest.mock("../../shared/database/prisma", () => ({
     prisma: {
+        $transaction: jest.fn(),
         enterpriseCategory: {
             create: jest.fn(),
             findMany: jest.fn(),
             findFirst: jest.fn(),
             update: jest.fn(),
             delete: jest.fn()
+        },
+        categoryRotation: {
+            create: jest.fn()
         }
     }
 }));
 describe("Category Module", () => {
+    let mockTx;
     beforeEach(() => {
+        mockTx = {
+            enterpriseCategory: {
+                create: jest.fn(),
+                findMany: jest.fn(),
+                findFirst: jest.fn(),
+                update: jest.fn(),
+                delete: jest.fn()
+            },
+            categoryRotation: {
+                create: jest.fn()
+            }
+        };
+        prisma_1.prisma.$transaction.mockImplementation(async (cb) => {
+            return await cb(mockTx);
+        });
         jest.clearAllMocks();
     });
     describe("CRUD", () => {
         it("1. deve criar categoria com sucesso", async () => {
-            prisma_1.prisma.enterpriseCategory.create.mockResolvedValue({ id: "cat1", name: "Free Fire" });
+            mockTx.enterpriseCategory.create.mockResolvedValue({ id: "cat1", name: "Free Fire" });
+            mockTx.categoryRotation.create.mockResolvedValue({ id: "rot1", categoryId: "cat1" });
             const result = await (0, category_service_1.createCategory)("ent1", { name: "Free Fire" });
-            expect(prisma_1.prisma.enterpriseCategory.create).toHaveBeenCalledWith({
+            expect(mockTx.enterpriseCategory.create).toHaveBeenCalledWith({
                 data: expect.objectContaining({ name: "Free Fire", enterpriseId: "ent1" }),
                 select: expect.any(Object)
+            });
+            expect(mockTx.categoryRotation.create).toHaveBeenCalledWith({
+                data: expect.objectContaining({ categoryId: "cat1" })
             });
             expect(result.id).toBe("cat1");
         });
@@ -99,7 +123,7 @@ describe("Category Module", () => {
         it("10. deve retornar conflito caso crie com nome duplicado na mesma empresa", async () => {
             const p2002Error = new Error("Unique constraint");
             p2002Error.code = "P2002";
-            prisma_1.prisma.enterpriseCategory.create.mockRejectedValue(p2002Error);
+            mockTx.enterpriseCategory.create.mockRejectedValue(p2002Error);
             await expect((0, category_service_1.createCategory)("ent1", { name: "Free Fire" })).rejects.toMatchObject({
                 statusCode: 409,
                 message: "Já existe uma categoria com este nome na sua empresa"

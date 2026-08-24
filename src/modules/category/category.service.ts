@@ -11,14 +11,25 @@ const categorySelect = {
 
 export const createCategory = async (enterpriseId: string, data: CreateCategoryInput) => {
     try {
-        return await prisma.enterpriseCategory.create({
-            data: {
-                name: data.name,
-                enterpriseId,
-                createAt: new Date(),
-                updateAt: new Date()
-            },
-            select: categorySelect
+        return await prisma.$transaction(async (tx) => {
+            const newCategory = await tx.enterpriseCategory.create({
+                data: {
+                    name: data.name,
+                    enterpriseId,
+                    createAt: new Date(),
+                    updateAt: new Date()
+                },
+                select: categorySelect
+            });
+
+            await tx.categoryRotation.create({
+                data: {
+                    categoryId: newCategory.id,
+                    updateAt: new Date()
+                }
+            });
+
+            return newCategory;
         });
     } catch (error: any) {
         if (error.code === 'P2002') {
