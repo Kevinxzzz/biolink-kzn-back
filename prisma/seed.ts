@@ -54,22 +54,40 @@ async function main() {
     const enterprises = await prisma.enterprise.findMany();
     for (const ent of enterprises) {
         const categoryName = "efootball";
-        const existingCategory = await prisma.enterpriseCategory.findFirst({
-            where: { name: categoryName, enterpriseId: ent.id }
-        });
-        if (!existingCategory) {
-            await prisma.enterpriseCategory.create({
-                data: {
+
+        const category = await prisma.enterpriseCategory.upsert({
+            where: {
+                name_enterpriseId: {
                     name: categoryName,
                     enterpriseId: ent.id,
-                    createAt: new Date(),
-                    updateAt: new Date()
-                }
-            });
-            console.log(`Category '${categoryName}' created for enterprise '${ent.name}'.`);
-        } else {
-            console.log(`Category '${categoryName}' already exists for enterprise '${ent.name}'.`);
-        }
+                },
+            },
+            update: {},
+            create: {
+                name: categoryName,
+                enterpriseId: ent.id,
+                createAt: new Date(),
+                updateAt: new Date(),
+                categoryRotation: {
+                    create: {
+                        updateAt: new Date(),
+                    },
+                },
+            },
+        });
+
+        await prisma.categoryRotation.upsert({
+            where: {
+                categoryId: category.id,
+            },
+            update: {},
+            create: {
+                categoryId: category.id,
+                updateAt: new Date(),
+            },
+        });
+
+        console.log(`Category '${categoryName}' and its rotation ensured for enterprise '${ent.name}'.`);
     }
 
     console.log("Seeding completed successfully.");

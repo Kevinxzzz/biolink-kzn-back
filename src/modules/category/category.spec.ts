@@ -149,12 +149,12 @@ describe("Category Module", () => {
                 message: "Categoria não encontrada ou acesso negado"
             });
         });
-        
+
         it("10. deve retornar conflito caso crie com nome duplicado na mesma empresa", async () => {
             const p2002Error = new Error("Unique constraint");
             (p2002Error as any).code = "P2002";
             mockTx.enterpriseCategory.create.mockRejectedValue(p2002Error);
-            
+
             await expect(createCategory("ent1", { name: "Free Fire" })).rejects.toMatchObject({
                 statusCode: 409,
                 message: "Já existe uma categoria com este nome na sua empresa"
