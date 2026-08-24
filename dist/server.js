@@ -7,7 +7,9 @@ const app_1 = __importDefault(require("./app"));
 const env_1 = require("./shared/config/env");
 const prisma_1 = require("./shared/database/prisma");
 const cronIncrement_worker_1 = require("./modules/cronIncrement/cronIncrement.worker");
+const cronTemporalRotation_worker_1 = require("./modules/cronTemporalRotation/cronTemporalRotation.worker");
 (0, cronIncrement_worker_1.startConsolidationWorker)();
+(0, cronTemporalRotation_worker_1.startTemporalRotationWorker)();
 const server = app_1.default.listen(env_1.env.PORT, () => {
     console.log(`🚀 Server running on port ${env_1.env.PORT}`);
 });

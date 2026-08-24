@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.consolidateClicks = void 0;
 const prisma_1 = require("../../shared/database/prisma");
 const redis_1 = require("../../shared/database/redis");
+const dateUtils_1 = require("../../shared/utils/dateUtils");
 const DECR_LUA_SCRIPT = `
     local current = tonumber(redis.call('GET', KEYS[1]) or '0')
     local sub = tonumber(ARGV[1])
@@ -12,21 +13,6 @@ const DECR_LUA_SCRIPT = `
     end
     return 0
 `;
-// Helper para pegar a data atual baseada no fuso de São Paulo, zerando a hora
-function getTodayBRTReferenceDate() {
-    const formatter = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/Sao_Paulo',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-    });
-    const parts = formatter.formatToParts(new Date());
-    const year = parts.find(p => p.type === 'year')?.value;
-    const month = parts.find(p => p.type === 'month')?.value;
-    const day = parts.find(p => p.type === 'day')?.value;
-    // Cria a data no UTC 0h correspondente àquele "dia" do calendário BRT
-    return new Date(`${year}-${month}-${day}T00:00:00.000Z`);
-}
 const consolidateClicks = async () => {
     let cursor = "0";
     const keysToProcess = [];
@@ -71,7 +57,7 @@ const consolidateClicks = async () => {
                     }
                 });
                 // Atualização Diária (Timezone Seguro BRT)
-                const referenceDate = getTodayBRTReferenceDate();
+                const referenceDate = (0, dateUtils_1.getTodayBRTReferenceDate)();
                 await tx.enterpriseCountDailyClicks.upsert({
                     where: {
                         enterpriseId_referenceDate: {

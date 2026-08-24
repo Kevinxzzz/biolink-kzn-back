@@ -4,6 +4,7 @@ exports.processClickAndRedirect = exports.reorderLinks = exports.activateLink = 
 const prisma_1 = require("../../shared/database/prisma");
 const appError_1 = require("../../shared/errors/appError");
 const redis_1 = require("../../shared/database/redis");
+const linkUtils_1 = require("../../shared/utils/linkUtils");
 const linkSelect = {
     id: true,
     title: true,
@@ -214,14 +215,7 @@ const processClickAndRedirect = async (enterpriseId, categoryId) => {
                     return { rotatedByUs: false, link: currentActive || link };
                 }
                 // SIM, ainda é o mesmo link. Buscar próximo link elegível.
-                const nextLinks = await tx.enterpriseUrl.findMany({
-                    where: { enterpriseId, categoryId, inRotationPool: true },
-                    orderBy: { order: 'asc' }
-                });
-                let nextLink = nextLinks.find(l => l.order > link.order && l.id !== link.id);
-                if (!nextLink) {
-                    nextLink = nextLinks.find(l => l.id !== link.id); // wrap-around
-                }
+                const nextLink = await (0, linkUtils_1.getNextEligibleLink)(tx, enterpriseId, categoryId, link);
                 // Se NÃO EXISTE próximo link elegível
                 if (!nextLink) {
                     return { rotatedByUs: false, link };

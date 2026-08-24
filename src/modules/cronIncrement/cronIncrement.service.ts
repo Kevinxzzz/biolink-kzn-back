@@ -1,6 +1,7 @@
 import { prisma } from "../../shared/database/prisma";
 import { redis } from "../../shared/database/redis";
 import { AppError } from "../../shared/errors/appError";
+import { getTodayBRTReferenceDate } from "../../shared/utils/dateUtils";
 
 const DECR_LUA_SCRIPT = `
     local current = tonumber(redis.call('GET', KEYS[1]) or '0')
@@ -11,23 +12,6 @@ const DECR_LUA_SCRIPT = `
     end
     return 0
 `;
-
-// Helper para pegar a data atual baseada no fuso de São Paulo, zerando a hora
-function getTodayBRTReferenceDate(): Date {
-    const formatter = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/Sao_Paulo',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-    });
-    const parts = formatter.formatToParts(new Date());
-    const year = parts.find(p => p.type === 'year')?.value;
-    const month = parts.find(p => p.type === 'month')?.value;
-    const day = parts.find(p => p.type === 'day')?.value;
-
-    // Cria a data no UTC 0h correspondente àquele "dia" do calendário BRT
-    return new Date(`${year}-${month}-${day}T00:00:00.000Z`);
-}
 
 export const consolidateClicks = async () => {
     let cursor = "0";

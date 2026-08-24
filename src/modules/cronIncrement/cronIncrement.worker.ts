@@ -14,5 +14,5 @@ export const startConsolidationWorker = () => {
         }
     });
 
-    console.log("Cron job de Consolidação de Cliques (Etapa 2) agendado (a cada 20 min).");
+    console.log("Cron job de incrementação de cliques (a cada 20 min) iniciado!");
 };

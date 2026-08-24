@@ -2,6 +2,7 @@ import { prisma } from "../../shared/database/prisma";
 import { AppError } from "../../shared/errors/appError";
 import type { CreateLinkInput, UpdateLinkInput, ReorderLinksInput } from "../../shared/zod/links.zod";
 import { redis } from "../../shared/database/redis";
+import { getNextEligibleLink } from "../../shared/utils/linkUtils";
 
 const linkSelect = {
     id: true,
@@ -239,15 +240,7 @@ export const processClickAndRedirect = async (enterpriseId: string, categoryId: 
                 }
 
                 // SIM, ainda é o mesmo link. Buscar próximo link elegível.
-                const nextLinks = await tx.enterpriseUrl.findMany({
-                    where: { enterpriseId, categoryId, inRotationPool: true },
-                    orderBy: { order: 'asc' }
-                });
-
-                let nextLink = nextLinks.find(l => l.order > link.order && l.id !== link.id);
-                if (!nextLink) {
-                    nextLink = nextLinks.find(l => l.id !== link.id); // wrap-around
-                }
+                const nextLink = await getNextEligibleLink(tx, enterpriseId, categoryId, link);
 
                 // Se NÃO EXISTE próximo link elegível
                 if (!nextLink) {
