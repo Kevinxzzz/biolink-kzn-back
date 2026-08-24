@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { AppError } from "../../shared/errors/appError";
-import { createCategoryZod, updateCategoryZod } from "../../shared/zod/category.zod";
+import { createCategoryZod, updateCategoryZod, updateCategoryRotationZod } from "../../shared/zod/category.zod";
 import * as categoryService from "./category.service";
 
 export const create = async (req: Request, res: Response, next: NextFunction) => {
@@ -71,6 +71,37 @@ export const remove = async (req: Request, res: Response, next: NextFunction) =>
 
         return res.status(204).send();
     } catch (error) {
+        next(error);
+    }
+};
+
+export const getCategoryRotation = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const enterpriseId = req.user!.enterpriseId;
+        const id = req.params.id as string;
+
+        const result = await categoryService.getCategoryRotationConfig(id, enterpriseId);
+
+        return res.status(200).json({ data: result });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateCategoryRotation = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const parsedData = updateCategoryRotationZod.parse(req.body);
+        const enterpriseId = req.user!.enterpriseId;
+        const id = req.params.id as string;
+
+        const result = await categoryService.updateCategoryRotationConfig(id, enterpriseId, parsedData);
+
+        return res.status(200).json({ data: result });
+    } catch (error: any) {
+        if (error.name === "ZodError") {
+            const message = error.issues?.[0]?.message || "Os dados informados são inválidos.";
+            return next(new AppError(message, 400));
+        }
         next(error);
     }
 };

@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.remove = exports.update = exports.getById = exports.list = exports.create = void 0;
+exports.updateCategoryRotation = exports.getCategoryRotation = exports.remove = exports.update = exports.getById = exports.list = exports.create = void 0;
 const appError_1 = require("../../shared/errors/appError");
 const category_zod_1 = require("../../shared/zod/category.zod");
 const categoryService = __importStar(require("./category.service"));
@@ -105,3 +105,32 @@ const remove = async (req, res, next) => {
     }
 };
 exports.remove = remove;
+const getCategoryRotation = async (req, res, next) => {
+    try {
+        const enterpriseId = req.user.enterpriseId;
+        const id = req.params.id;
+        const result = await categoryService.getCategoryRotationConfig(id, enterpriseId);
+        return res.status(200).json({ data: result });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.getCategoryRotation = getCategoryRotation;
+const updateCategoryRotation = async (req, res, next) => {
+    try {
+        const parsedData = category_zod_1.updateCategoryRotationZod.parse(req.body);
+        const enterpriseId = req.user.enterpriseId;
+        const id = req.params.id;
+        const result = await categoryService.updateCategoryRotationConfig(id, enterpriseId, parsedData);
+        return res.status(200).json({ data: result });
+    }
+    catch (error) {
+        if (error.name === "ZodError") {
+            const message = error.issues?.[0]?.message || "Os dados informados são inválidos.";
+            return next(new appError_1.AppError(message, 400));
+        }
+        next(error);
+    }
+};
+exports.updateCategoryRotation = updateCategoryRotation;

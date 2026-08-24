@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteCategory = exports.updateCategory = exports.getCategoryById = exports.getCategories = exports.createCategory = void 0;
+exports.updateCategoryRotationConfig = exports.getCategoryRotationConfig = exports.deleteCategory = exports.updateCategory = exports.getCategoryById = exports.getCategories = exports.createCategory = void 0;
 const prisma_1 = require("../../shared/database/prisma");
 const appError_1 = require("../../shared/errors/appError");
 const categorySelect = {
@@ -91,3 +91,53 @@ const deleteCategory = async (id, enterpriseId) => {
     });
 };
 exports.deleteCategory = deleteCategory;
+const getCategoryRotationConfig = async (id, enterpriseId) => {
+    const category = await prisma_1.prisma.enterpriseCategory.findFirst({
+        where: { id, enterpriseId },
+        include: { categoryRotation: true }
+    });
+    if (!category) {
+        throw new appError_1.AppError("Categoria não encontrada ou acesso negado", 404);
+    }
+    if (!category.categoryRotation) {
+        throw new appError_1.AppError("Configuração de rotação não encontrada para esta categoria", 404);
+    }
+    return category.categoryRotation;
+};
+exports.getCategoryRotationConfig = getCategoryRotationConfig;
+const updateCategoryRotationConfig = async (id, enterpriseId, data) => {
+    // Busca a categoria e verifica posse usando FOR UPDATE para garantir consistência
+    return await prisma_1.prisma.$transaction(async (tx) => {
+        const categoryExists = await tx.$queryRaw `
+            SELECT id FROM "enterprise_category" 
+            WHERE "id" = ${id}::uuid AND "enterprise_id" = ${enterpriseId}::uuid 
+            FOR UPDATE
+        `;
+        if (!categoryExists || categoryExists.length === 0) {
+            throw new appError_1.AppError("Categoria não encontrada ou acesso negado", 404);
+        }
+        // Sanitização de estado baseado no tipo da rotação
+        let limitClicks = null;
+        let timerInMinutes = null;
+        let timerStartedAt = null;
+        if (data.toggleType === "LIMITCLICKS") {
+            limitClicks = data.limitClicks ?? null;
+        }
+        else if (data.toggleType === "TIMER") {
+            timerInMinutes = data.timerInMinutes ?? null;
+            timerStartedAt = new Date();
+        }
+        // Para MANUAL e SCHEDULE os valores permanecem nulos
+        return await tx.categoryRotation.update({
+            where: { categoryId: id },
+            data: {
+                toggleType: data.toggleType,
+                limitClicks,
+                timerInMinutes,
+                timerStartedAt,
+                updateAt: new Date()
+            }
+        });
+    });
+};
+exports.updateCategoryRotationConfig = updateCategoryRotationConfig;

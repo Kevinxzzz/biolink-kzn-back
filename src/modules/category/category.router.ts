@@ -12,6 +12,8 @@ categoryRoutes.use(hasRole(UserRole.OWNER, UserRole.ADMIN));
 
 categoryRoutes.post("/", categoryController.create);
 categoryRoutes.get("/", categoryController.list);
+categoryRoutes.get("/:id/rotation", categoryController.getCategoryRotation);
+categoryRoutes.patch("/:id/rotation", categoryController.updateCategoryRotation);
 categoryRoutes.get("/:id", categoryController.getById);
 categoryRoutes.patch("/:id", categoryController.update);
 categoryRoutes.delete("/:id", categoryController.remove);

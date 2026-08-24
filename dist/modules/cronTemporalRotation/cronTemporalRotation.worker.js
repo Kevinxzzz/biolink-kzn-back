@@ -19,6 +19,6 @@ const startTemporalRotationWorker = () => {
             console.error("[Worker - Temporal Rotation] Falha crítica na rotina de rotação temporal:", error);
         }
     });
-    console.log("Cron job de Rotação Temporal (Etapa 3) agendado (a cada 1 min).");
+    console.log("Cron job de Rotação Temporal (a cada 1 min) iniciado!");
 };
 exports.startTemporalRotationWorker = startTemporalRotationWorker;

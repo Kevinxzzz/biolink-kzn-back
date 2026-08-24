@@ -1,4 +1,4 @@
-import { createCategory, getCategories, getCategoryById, updateCategory, deleteCategory } from "./category.service";
+import { createCategory, getCategories, getCategoryById, updateCategory, deleteCategory, getCategoryRotationConfig, updateCategoryRotationConfig } from "./category.service";
 import { prisma } from "../../shared/database/prisma";
 import { createCategoryZod, updateCategoryZod } from "../../shared/zod/category.zod";
 
@@ -13,7 +13,8 @@ jest.mock("../../shared/database/prisma", () => ({
             delete: jest.fn()
         },
         categoryRotation: {
-            create: jest.fn()
+            create: jest.fn(),
+            update: jest.fn()
         }
     }
 }));
@@ -23,6 +24,7 @@ describe("Category Module", () => {
 
     beforeEach(() => {
         mockTx = {
+            $queryRaw: jest.fn(),
             enterpriseCategory: {
                 create: jest.fn(),
                 findMany: jest.fn(),
@@ -31,7 +33,8 @@ describe("Category Module", () => {
                 delete: jest.fn()
             },
             categoryRotation: {
-                create: jest.fn()
+                create: jest.fn(),
+                update: jest.fn()
             }
         };
 
@@ -155,6 +158,82 @@ describe("Category Module", () => {
             await expect(createCategory("ent1", { name: "Free Fire" })).rejects.toMatchObject({
                 statusCode: 409,
                 message: "Já existe uma categoria com este nome na sua empresa"
+            });
+        });
+    });
+
+    describe("Category Rotation Module", () => {
+        it("11. getCategoryRotationConfig deve retornar a configuração corretamente", async () => {
+            const mockCategory = {
+                id: "cat1",
+                enterpriseId: "ent1",
+                categoryRotation: { id: "rot1", toggleType: "MANUAL" }
+            };
+            (prisma.enterpriseCategory.findFirst as jest.Mock).mockResolvedValue(mockCategory);
+
+            const result = await getCategoryRotationConfig("cat1", "ent1");
+
+            expect(prisma.enterpriseCategory.findFirst).toHaveBeenCalledWith({
+                where: { id: "cat1", enterpriseId: "ent1" },
+                include: { categoryRotation: true }
+            });
+            expect(result).toEqual(mockCategory.categoryRotation);
+        });
+
+        it("12. getCategoryRotationConfig deve retornar 404 se tentar acessar outra empresa ou inexistente", async () => {
+            (prisma.enterpriseCategory.findFirst as jest.Mock).mockResolvedValue(null);
+
+            await expect(getCategoryRotationConfig("cat2", "ent1")).rejects.toMatchObject({
+                statusCode: 404,
+                message: "Categoria não encontrada ou acesso negado"
+            });
+        });
+
+        it("13. updateCategoryRotationConfig deve sanitizar estado para TIMER corretamente", async () => {
+            mockTx.$queryRaw.mockResolvedValue([{ id: "cat1" }]);
+            mockTx.categoryRotation.update.mockResolvedValue({ toggleType: "TIMER", timerInMinutes: 30 });
+
+            await updateCategoryRotationConfig("cat1", "ent1", {
+                toggleType: "TIMER",
+                timerInMinutes: 30
+            });
+
+            expect(mockTx.$queryRaw).toHaveBeenCalled();
+            expect(mockTx.categoryRotation.update).toHaveBeenCalledWith({
+                where: { categoryId: "cat1" },
+                data: expect.objectContaining({
+                    toggleType: "TIMER",
+                    timerInMinutes: 30,
+                    limitClicks: null,
+                    timerStartedAt: expect.any(Date)
+                })
+            });
+        });
+
+        it("14. updateCategoryRotationConfig deve sanitizar estado para MANUAL corretamente", async () => {
+            mockTx.$queryRaw.mockResolvedValue([{ id: "cat1" }]);
+
+            await updateCategoryRotationConfig("cat1", "ent1", {
+                toggleType: "MANUAL"
+            });
+
+            expect(mockTx.categoryRotation.update).toHaveBeenCalledWith({
+                where: { categoryId: "cat1" },
+                data: expect.objectContaining({
+                    toggleType: "MANUAL",
+                    limitClicks: null,
+                    timerInMinutes: null,
+                    timerStartedAt: null
+                })
+            });
+        });
+
+        it("15. updateCategoryRotationConfig deve retornar 404 para categoria inexistente", async () => {
+            mockTx.$queryRaw.mockResolvedValue([]);
+
+            await expect(updateCategoryRotationConfig("cat1", "ent1", { toggleType: "MANUAL" })).rejects.toMatchObject({
+                statusCode: 404,
+                message: "Categoria não encontrada ou acesso negado"
             });
         });
     });

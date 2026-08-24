@@ -46,6 +46,8 @@ categoryRoutes.use(authenticate_1.authenticate);
 categoryRoutes.use((0, hasRole_1.hasRole)(client_1.UserRole.OWNER, client_1.UserRole.ADMIN));
 categoryRoutes.post("/", categoryController.create);
 categoryRoutes.get("/", categoryController.list);
+categoryRoutes.get("/:id/rotation", categoryController.getCategoryRotation);
+categoryRoutes.patch("/:id/rotation", categoryController.updateCategoryRotation);
 categoryRoutes.get("/:id", categoryController.getById);
 categoryRoutes.patch("/:id", categoryController.update);
 categoryRoutes.delete("/:id", categoryController.remove);

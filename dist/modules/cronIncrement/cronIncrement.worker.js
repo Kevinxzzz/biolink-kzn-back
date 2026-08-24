@@ -19,6 +19,6 @@ const startConsolidationWorker = () => {
             console.error("[Worker - Consolidation] Falha crítica na rotina de consolidação:", error);
         }
     });
-    console.log("Cron job de incrementação de cliques (a cada 20 min), Iniciado!");
+    console.log("Cron job de incrementação de cliques (a cada 20 min) iniciado!");
 };
 exports.startConsolidationWorker = startConsolidationWorker;
