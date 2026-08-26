@@ -118,3 +118,13 @@ export const redirect = async (req: Request, res: Response, next: NextFunction) 
         next(error);
     }
 };
+
+export const redirectOnlyEfootballFromKzn = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const url = await linksService.processClickAndRedirectOnlyEfootball();
+
+        return res.redirect(url);
+    } catch (error) {
+        next(error);
+    }
+};
