@@ -12,7 +12,7 @@ exports.updateLinkZod = zod_1.z.object({
     url: zod_1.z.string().trim().url("A URL deve ser válida").max(500, "A URL deve ter no máximo 500 caracteres").optional(),
 }).strict();
 exports.reorderLinksZod = zod_1.z.object({
-    categoryId: zod_1.z.string().uuid("O ID da categoria deve ser um UUID válido"),
+    categoryId: zod_1.z.string().uuid("O ID da categoria deve ser um UUID válido").optional(),
     links: zod_1.z.array(zod_1.z.object({
         id: zod_1.z.string().uuid("ID inválido"),
         order: zod_1.z.number().int().positive("A ordem deve ser um número positivo"),

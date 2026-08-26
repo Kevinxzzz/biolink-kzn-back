@@ -81,7 +81,7 @@ describe("CronIncrement Module (Etapa 2) - Consolidação", () => {
             update: expect.objectContaining({ dailyClicks: { increment: 15 } })
         });
 
-        // 8. O decremento (eval) deve ocorrer após a persistência (na verdade fora da transação, o mock garante sucesso)
+        // 8. O decremento (eval) deve ocorrer dentro do mockTx do callback, e o mock garantirá o sucesso
         expect(redis.eval).toHaveBeenCalledWith(expect.any(String), 1, "clicks:ent1:cat1", 15);
     });
 
@@ -128,8 +128,26 @@ describe("CronIncrement Module (Etapa 2) - Consolidação", () => {
 
         await consolidateClicks();
 
-        // Como o banco falhou, NÃO deve decrementar no redis
+        // Como o banco falhou na operação interna, NÃO deve decrementar no redis
         expect(redis.eval).not.toHaveBeenCalled();
+    });
+
+    it("8. deve compensar cliques no redis se o commit falhar após o decremento", async () => {
+        (redis.scan as jest.Mock).mockResolvedValueOnce(["0", ["clicks:ent1:cat1"]]);
+        mockTx.enterpriseUrl.findFirst.mockResolvedValue({ id: "link1" });
+        (redis.get as jest.Mock).mockResolvedValue("15");
+        (redis.eval as jest.Mock).mockResolvedValue(1);
+        (redis.incrby as jest.Mock) = jest.fn();
+
+        (prisma.$transaction as jest.Mock).mockImplementationOnce(async (cb) => {
+            await cb(mockTx);
+            throw new Error("Commit Error");
+        });
+
+        await consolidateClicks();
+
+        expect(redis.eval).toHaveBeenCalledWith(expect.any(String), 1, "clicks:ent1:cat1", 15);
+        expect(redis.incrby).toHaveBeenCalledWith("clicks:ent1:cat1", 15);
     });
 
     it("9. NÃO deve processar contador inexistente ou <= 0", async () => {

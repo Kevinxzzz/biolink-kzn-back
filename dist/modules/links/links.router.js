@@ -41,6 +41,8 @@ const hasRole_1 = require("../../shared/middlewares/hasRole");
 const linksController = __importStar(require("./links.controller"));
 const linksRoutes = (0, express_1.Router)();
 exports.linksRoutes = linksRoutes;
+// Rota temporária, quando o cliente quiser a melhoria para multi categorias eu utilizo a rota normal.
+linksRoutes.get("/redirect/kzngg/efootball", linksController.redirectOnlyEfootballFromKzn);
 // Rota pública para redirecionamento e contabilização de cliques
 linksRoutes.get("/redirect/:enterpriseId/:categoryId", linksController.redirect);
 // Middleware aplicado a todas as rotas do módulo de links (autenticadas)

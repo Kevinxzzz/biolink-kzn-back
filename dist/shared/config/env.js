@@ -11,7 +11,8 @@ const envSchema = zod_1.z.object({
     JWT_SECRET: zod_1.z.string().min(10, "JWT_SECRET deve ter ao menos 10 caracteres").default("default-jwt-secret-key-for-dev-and-test"),
     FRONTEND_URL: zod_1.z.string().optional(),
     FRONTEND_URL_LOCAL: zod_1.z.string().optional(),
-    TRUST_PROXY: zod_1.z.string().optional()
+    TRUST_PROXY: zod_1.z.string().optional(),
+    ENTERPRISE_ID_KZN: zod_1.z.string()
 });
 const _env = envSchema.safeParse(process.env);
 if (!_env.success) {

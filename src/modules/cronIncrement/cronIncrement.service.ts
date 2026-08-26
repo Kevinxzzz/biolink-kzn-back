@@ -31,76 +31,79 @@ export const consolidateClicks = async () => {
             if (parts.length !== 3) continue;
 
             const [, enterpriseId, categoryId] = parts;
-            let clicksToConsolidate = 0;
+            let compensatedAmount = 0;
 
-            // 2. Transação no PostgreSQL
-            await prisma.$transaction(async (tx) => {
-                // Lock da Categoria
-                await tx.$executeRaw`SELECT id FROM "enterprise_category" WHERE "id" = ${categoryId}::uuid FOR UPDATE`;
+            try {
+                // 2. Transação no PostgreSQL e Redis combinada
+                await prisma.$transaction(async (tx) => {
+                    // Lock da Categoria
+                    await tx.$executeRaw`SELECT id FROM "enterprise_category" WHERE "id" = ${categoryId}::uuid FOR UPDATE`;
 
-                // Busca do Link Ativo (autoridade atual da categoria)
-                const activeLink = await tx.enterpriseUrl.findFirst({
-                    where: { enterpriseId, categoryId, active: true }
-                });
+                    // Busca do Link Ativo (autoridade atual da categoria)
+                    const activeLink = await tx.enterpriseUrl.findFirst({
+                        where: { enterpriseId, categoryId, active: true }
+                    });
 
-                if (!activeLink) {
-                    return; // Se não houver link ativo, não consolidamos nesta rodada
-                }
-
-                // Leitura Segura do Redis dentro do Lock
-                const redisCountStr = await redis.get(key);
-                const redisCount = redisCountStr ? parseInt(redisCountStr, 10) : 0;
-
-                if (redisCount <= 0) {
-                    return; // Nada a consolidar
-                }
-
-                clicksToConsolidate = redisCount;
-
-                // Incremento no Link
-                await tx.enterpriseUrl.update({
-                    where: { id: activeLink.id },
-                    data: {
-                        countClicks: { increment: clicksToConsolidate },
-                        updateAt: new Date()
+                    if (!activeLink) {
+                        return; // Se não houver link ativo, não consolidamos nesta rodada
                     }
-                });
 
-                // Atualização Diária (Timezone Seguro BRT)
-                const referenceDate = getTodayBRTReferenceDate();
+                    // Leitura Segura do Redis dentro do Lock
+                    const redisCountStr = await redis.get(key);
+                    const redisCount = redisCountStr ? parseInt(redisCountStr, 10) : 0;
 
-                await tx.enterpriseCountDailyClicks.upsert({
-                    where: {
-                        enterpriseId_referenceDate: {
-                            enterpriseId,
-                            referenceDate
+                    if (redisCount <= 0) {
+                        return; // Nada a consolidar
+                    }
+
+                    // Incremento no Link
+                    await tx.enterpriseUrl.update({
+                        where: { id: activeLink.id },
+                        data: {
+                            countClicks: { increment: redisCount },
+                            updateAt: new Date()
                         }
-                    },
-                    create: {
-                        enterpriseId,
-                        referenceDate,
-                        dailyClicks: clicksToConsolidate,
-                        createAt: new Date(),
-                        updateAt: new Date()
-                    },
-                    update: {
-                        dailyClicks: { increment: clicksToConsolidate },
-                        updateAt: new Date()
+                    });
+
+                    // Atualização Diária (Timezone Seguro BRT)
+                    const referenceDate = getTodayBRTReferenceDate();
+
+                    await tx.enterpriseCountDailyClicks.upsert({
+                        where: {
+                            enterpriseId_referenceDate: {
+                                enterpriseId,
+                                referenceDate
+                            }
+                        },
+                        create: {
+                            enterpriseId,
+                            referenceDate,
+                            dailyClicks: redisCount,
+                            createAt: new Date(),
+                            updateAt: new Date()
+                        },
+                        update: {
+                            dailyClicks: { increment: redisCount },
+                            updateAt: new Date()
+                        }
+                    });
+
+                    // Decremento no Redis (Dentro do Lock do PG)
+                    compensatedAmount = redisCount;
+                    const evalResult = await redis.eval(DECR_LUA_SCRIPT, 1, key, redisCount);
+                    if (evalResult === 0) {
+                        // Se o script não decrementou, não precisamos compensar
+                        compensatedAmount = 0;
                     }
                 });
-            });
-
-            // 3. Remoção/Decremento no Redis (Pós-Commit)
-            if (clicksToConsolidate > 0) {
-                // O script Lua garante que não vamos negativar o contador 
-                // se a Etapa 1 tiver feito um SET 1 para rotacionar
-                await redis.eval(DECR_LUA_SCRIPT, 1, key, clicksToConsolidate);
+            } catch (error) {
+                console.error(`Erro ao consolidar cliques da chave ${key}:`, error);
+                if (compensatedAmount > 0) {
+                    await redis.incrby(key, compensatedAmount);
+                }
             }
-
-        } catch (error) {
-            console.error(`Erro ao consolidar cliques da chave ${key}:`, error);
-            // Em caso de falha (ex: banco indisponível), o script Lua não rodará,
-            // garantindo o At-Least-Once Delivery (nenhum clique é perdido)
+        } catch (outerError) {
+            console.error(`Erro inesperado no processamento da chave ${key}:`, outerError);
         }
     }
 };

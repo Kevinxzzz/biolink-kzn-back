@@ -70,7 +70,7 @@ describe("CronIncrement Module (Etapa 2) - Consolidação", () => {
             create: expect.objectContaining({ dailyClicks: 15 }),
             update: expect.objectContaining({ dailyClicks: { increment: 15 } })
         });
-        // 8. O decremento (eval) deve ocorrer após a persistência (na verdade fora da transação, o mock garante sucesso)
+        // 8. O decremento (eval) deve ocorrer dentro do mockTx do callback, e o mock garantirá o sucesso
         expect(redis_1.redis.eval).toHaveBeenCalledWith(expect.any(String), 1, "clicks:ent1:cat1", 15);
     });
     it("5/6. deve isolar múltiplas empresas e categorias corretamente", async () => {
@@ -104,8 +104,22 @@ describe("CronIncrement Module (Etapa 2) - Consolidação", () => {
         // Simula falha no banco
         mockTx.enterpriseUrl.update.mockRejectedValue(new Error("DB Error"));
         await (0, cronIncrement_service_1.consolidateClicks)();
-        // Como o banco falhou, NÃO deve decrementar no redis
+        // Como o banco falhou na operação interna, NÃO deve decrementar no redis
         expect(redis_1.redis.eval).not.toHaveBeenCalled();
+    });
+    it("8. deve compensar cliques no redis se o commit falhar após o decremento", async () => {
+        redis_1.redis.scan.mockResolvedValueOnce(["0", ["clicks:ent1:cat1"]]);
+        mockTx.enterpriseUrl.findFirst.mockResolvedValue({ id: "link1" });
+        redis_1.redis.get.mockResolvedValue("15");
+        redis_1.redis.eval.mockResolvedValue(1);
+        redis_1.redis.incrby = jest.fn();
+        prisma_1.prisma.$transaction.mockImplementationOnce(async (cb) => {
+            await cb(mockTx);
+            throw new Error("Commit Error");
+        });
+        await (0, cronIncrement_service_1.consolidateClicks)();
+        expect(redis_1.redis.eval).toHaveBeenCalledWith(expect.any(String), 1, "clicks:ent1:cat1", 15);
+        expect(redis_1.redis.incrby).toHaveBeenCalledWith("clicks:ent1:cat1", 15);
     });
     it("9. NÃO deve processar contador inexistente ou <= 0", async () => {
         redis_1.redis.scan.mockResolvedValueOnce(["0", ["clicks:ent1:cat1", "clicks:ent1:cat2"]]);
