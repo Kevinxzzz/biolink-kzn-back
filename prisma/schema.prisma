@@ -35,7 +35,7 @@ model enterprise {
   user                       user[]
   influencer                 influencer[]
   enterpriseUrl              enterpriseUrl[]
-  enterpriseToggleUrl        enterpriseToggleUrl?
+  enterpriseCategory         enterpriseCategory[]
   enterpriseCountDailyClicks enterpriseCountDailyClicks[]
   enterpriseTokenInvites     enterpriseTokenInvite[]
 
@@ -51,7 +51,7 @@ model enterpriseTokenInvite {
   createAt     DateTime @map("create_at")
   updateAt     DateTime @map("update_at")
 
-  enterprise       enterprise        @relation(fields: [enterpriseId], references: [id])
+  enterprise       enterprise        @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
   user             user              @relation(fields: [createdById], references: [id])
   userTokenInvites userTokenInvite[]
 
@@ -69,7 +69,7 @@ model user {
   createAt     DateTime @map("create_at")
   updateAt     DateTime @map("update_at")
 
-  enterprise             enterprise              @relation(fields: [enterpriseId], references: [id])
+  enterprise             enterprise              @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
   role                   role                    @relation(fields: [roleId], references: [id])
   enterpriseTokenInvites enterpriseTokenInvite[]
   userTokenInvites       userTokenInvite[]
@@ -89,12 +89,12 @@ model role {
 }
 
 model userTokenInvite {
-  id          String   @id @default(uuid()) @db.Uuid
-  usedBy      String   @map("used_by") @db.Uuid
-  tokenInvite String   @map("token_invite") @db.Uuid
-  usedAt      DateTime @map("used_at")
+  id            String   @id @default(uuid()) @db.Uuid
+  usedBy        String   @map("used_by") @db.Uuid
+  tokenInviteId String   @map("token_invite_id") @db.Uuid
+  usedAt        DateTime @map("used_at")
 
-  enterpriseTokenInvite enterpriseTokenInvite @relation(fields: [tokenInvite], references: [id])
+  enterpriseTokenInvite enterpriseTokenInvite @relation(fields: [tokenInviteId], references: [id], onDelete: Cascade)
   user                  user                  @relation(fields: [usedBy], references: [id])
 
   @@map("user_token_invite")
@@ -103,6 +103,7 @@ model userTokenInvite {
 model influencer {
   id             String   @id @default(uuid()) @db.Uuid
   name           String
+  slug           String
   email          String
   password       String
   counterEntries Int      @map("counter_entries")
@@ -113,11 +114,11 @@ model influencer {
   createAt       DateTime @map("create_at")
   updateAt       DateTime @map("update_at")
 
-  enterprise                 enterprise                   @relation(fields: [enterpriseId], references: [id])
+  enterprise                 enterprise                   @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
   influencerPlatformUrl      influencerPlatformUrl[]
   influencerCountDailyClicks influencerCountDailyClicks[]
 
-  @@unique([name, email, personalUrl])
+  @@unique([name, email, personalUrl, slug])
 }
 
 model platform {
@@ -136,7 +137,7 @@ model influencerPlatformUrl {
   createAt     DateTime @map("create_at")
   updateAt     DateTime @map("update_at")
 
-  influencer influencer @relation(fields: [influencerId], references: [id])
+  influencer influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
   platform   platform   @relation(fields: [platformId], references: [id])
 
   @@map("influencer_platform_url")
@@ -150,7 +151,7 @@ model influencerCountDailyClicks {
   createAt      DateTime @map("create_at")
   updateAt      DateTime @map("update_at")
 
-  influencer influencer @relation(fields: [influencerId], references: [id])
+  influencer influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
 
   @@unique([influencerId, referenceDate])
   @@map("influencer_count_daily_clicks")
@@ -163,39 +164,59 @@ model enterpriseUrl {
   countClicks    Int      @map("count_clicks")
   active         Boolean
   order          Int
-  inRotationPool Boolean  @map("in_rotation_pool")
+  inRotationPool Boolean  @default(true) @map("in_rotation_pool")
   enterpriseId   String   @map("enterprise_id") @db.Uuid
+  categoryId     String   @map("category_id") @db.Uuid
   createAt       DateTime @map("create_at")
   updateAt       DateTime @map("update_at")
 
-  enterprise        enterprise          @relation(fields: [enterpriseId], references: [id])
-  toggleUrlSchedule toggleUrlSchedule[]
+  enterprise         enterprise         @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+  enterpriseCategory enterpriseCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  urlSchedule        urlSchedule[]
 
+  @@unique([url])
   @@map("enterprise_url")
 }
 
-model toggleUrlSchedule {
+model urlSchedule {
   id              String   @id @default(uuid()) @db.Uuid
   enterpriseUrlId String   @map("enterprise_url_id") @db.Uuid
   dateTime        DateTime @map("date_time")
+  active          Boolean  @default(true)
   updateAt        DateTime @map("update_at")
 
-  enterpriseUrl enterpriseUrl @relation(fields: [enterpriseUrlId], references: [id])
+  enterpriseUrl enterpriseUrl @relation(fields: [enterpriseUrlId], references: [id], onDelete: Cascade)
 
-  @@map("toggle_url_schedule")
+  @@map("url_schedule")
 }
 
-model enterpriseToggleUrl {
+model enterpriseCategory {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String
+  enterpriseId String   @map("enterprise_id") @db.Uuid
+  createAt     DateTime @map("create_at")
+  updateAt     DateTime @map("update_at")
+
+  enterprise       enterprise        @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+  enterpriseUrl    enterpriseUrl[]
+  categoryRotation categoryRotation?
+
+  @@unique([name, enterpriseId])
+  @@map("enterprise_category")
+}
+
+model categoryRotation {
   id             String     @id @default(uuid()) @db.Uuid
-  toggleType     ToggleType @map("toggle_type")
+  toggleType     ToggleType @default(MANUAL) @map("toggle_type")
   limitClicks    Int?       @map("limit_clicks")
   timerInMinutes Int?       @map("timer_in_minutes")
-  enterpriseId   String     @unique @map("enterprise_id") @db.Uuid
+  timerStartedAt DateTime?  @map("timer_started_at")
+  categoryId     String     @unique @map("category_id") @db.Uuid
   updateAt       DateTime   @map("update_at")
 
-  enterprise enterprise @relation(fields: [enterpriseId], references: [id])
+  enterpriseCategory enterpriseCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
-  @@map("enterprise_toggle_url")
+  @@map("category_rotation")
 }
 
 model enterpriseCountDailyClicks {
@@ -206,7 +227,7 @@ model enterpriseCountDailyClicks {
   createAt      DateTime @map("create_at")
   updateAt      DateTime @map("update_at")
 
-  enterprise enterprise @relation(fields: [enterpriseId], references: [id])
+  enterprise enterprise @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
 
   @@unique([enterpriseId, referenceDate])
   @@map("enterprise_count_daily_clicks")

@@ -1,0 +1,9 @@
+#!/usr/bin/expect
+spawn npx prisma migrate dev --name unique_active_link
+expect "We need to reset the PostgreSQL database" {
+  send "y\r"
+  exp_continue
+} "If there are existing duplicate values, this will fail." {
+  send "y\r"
+  exp_continue
+} eof

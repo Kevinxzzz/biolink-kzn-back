@@ -50,6 +50,46 @@ async function main() {
         }
     }
 
+    // Seed Categories
+    const enterprises = await prisma.enterprise.findMany();
+    for (const ent of enterprises) {
+        const categoryName = "efootball";
+
+        const category = await prisma.enterpriseCategory.upsert({
+            where: {
+                name_enterpriseId: {
+                    name: categoryName,
+                    enterpriseId: ent.id,
+                },
+            },
+            update: {},
+            create: {
+                name: categoryName,
+                enterpriseId: ent.id,
+                createAt: new Date(),
+                updateAt: new Date(),
+                categoryRotation: {
+                    create: {
+                        updateAt: new Date(),
+                    },
+                },
+            },
+        });
+
+        await prisma.categoryRotation.upsert({
+            where: {
+                categoryId: category.id,
+            },
+            update: {},
+            create: {
+                categoryId: category.id,
+                updateAt: new Date(),
+            },
+        });
+
+        console.log(`Category '${categoryName}' and its rotation ensured for enterprise '${ent.name}'.`);
+    }
+
     console.log("Seeding completed successfully.");
 }
 
