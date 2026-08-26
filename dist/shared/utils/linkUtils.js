@@ -12,12 +12,23 @@ exports.getNextEligibleLink = getNextEligibleLink;
 async function getNextEligibleLink(tx, enterpriseId, categoryId, currentLink) {
     const nextLinks = await tx.enterpriseUrl.findMany({
         where: { enterpriseId, categoryId, inRotationPool: true },
-        orderBy: { order: 'asc' }
+        orderBy: [
+            { order: 'asc' },
+            { createAt: 'asc' },
+            { id: 'asc' }
+        ]
     });
-    let nextLink = nextLinks.find((l) => l.order > currentLink.order && l.id !== currentLink.id);
-    if (!nextLink) {
-        // Wrap-around: pega o primeiro que não seja o atual
-        nextLink = nextLinks.find((l) => l.id !== currentLink.id);
+    if (nextLinks.length === 0) {
+        return null;
     }
-    return nextLink || null;
+    if (nextLinks.length === 1 && nextLinks[0].id === currentLink.id) {
+        return null;
+    }
+    const currentIndex = nextLinks.findIndex((l) => l.id === currentLink.id);
+    if (currentIndex === -1) {
+        // O link atual não está na pool elegível, rotaciona para o primeiro disponível
+        return nextLinks[0];
+    }
+    const nextIndex = (currentIndex + 1) % nextLinks.length;
+    return nextLinks[nextIndex];
 }

@@ -1,6 +1,17 @@
 import { prisma } from "../../shared/database/prisma";
+import { redis } from "../../shared/database/redis";
 import { getNextEligibleLink } from "../../shared/utils/linkUtils";
+import { getTodayBRTReferenceDate } from "../../shared/utils/dateUtils";
 
+const DECR_LUA_SCRIPT = `
+    local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+    local sub = tonumber(ARGV[1])
+    if current >= sub then
+        redis.call('DECRBY', KEYS[1], sub)
+        return 1
+    end
+    return 0
+`;
 export const processTemporalRotations = async () => {
     try {
         await processTimerRotations();
@@ -22,6 +33,8 @@ const processTimerRotations = async () => {
         const expirationTime = new Date(config.timerStartedAt.getTime() + config.timerInMinutes * 60000);
 
         if (expirationTime <= now) {
+            let compensatedAmount = 0;
+            let currentEntId = "";
             try {
                 await prisma.$transaction(async (tx) => {
                     // Lock da Categoria
@@ -43,14 +56,37 @@ const processTimerRotations = async () => {
 
                     if (!currentActive) return;
 
+                    currentEntId = currentActive.enterpriseId;
                     const nextLink = await getNextEligibleLink(tx, currentActive.enterpriseId, config.categoryId, currentActive);
 
                     // Só realiza a rotação e reinicia o timer se houver um link diferente elegível
                     if (nextLink && nextLink.id !== currentActive.id) {
-                        await tx.enterpriseUrl.update({
-                            where: { id: currentActive.id },
-                            data: { active: false, updateAt: new Date() }
-                        });
+                        const redisKey = `clicks:${currentActive.enterpriseId}:${config.categoryId}`;
+                        const redisCountStr = await redis.get(redisKey);
+                        const pending = redisCountStr ? parseInt(redisCountStr, 10) : 0;
+
+                        if (pending > 0) {
+                            await tx.enterpriseUrl.update({
+                                where: { id: currentActive.id },
+                                data: { countClicks: { increment: pending }, active: false, updateAt: new Date() }
+                            });
+
+                            const referenceDate = getTodayBRTReferenceDate();
+                            await tx.enterpriseCountDailyClicks.upsert({
+                                where: { enterpriseId_referenceDate: { enterpriseId: currentActive.enterpriseId, referenceDate } },
+                                create: { enterpriseId: currentActive.enterpriseId, referenceDate, dailyClicks: pending, createAt: new Date(), updateAt: new Date() },
+                                update: { dailyClicks: { increment: pending }, updateAt: new Date() }
+                            });
+                            
+                            compensatedAmount = pending;
+                            const evalResult = await redis.eval(DECR_LUA_SCRIPT, 1, redisKey, pending);
+                            if (evalResult === 0) compensatedAmount = 0;
+                        } else {
+                            await tx.enterpriseUrl.update({
+                                where: { id: currentActive.id },
+                                data: { active: false, updateAt: new Date() }
+                            });
+                        }
 
                         await tx.enterpriseUrl.update({
                             where: { id: nextLink.id },
@@ -65,6 +101,9 @@ const processTimerRotations = async () => {
                 });
             } catch (err) {
                 console.error(`Erro ao processar TIMER da categoria ${config.categoryId}:`, err);
+                if (compensatedAmount > 0 && currentEntId) {
+                    await redis.incrby(`clicks:${currentEntId}:${config.categoryId}`, compensatedAmount);
+                }
             }
         }
     }
@@ -89,6 +128,7 @@ const processScheduleRotations = async () => {
 
     for (const categoryId of Object.keys(schedulesByCategory)) {
         const categorySchedules = schedulesByCategory[categoryId];
+        let compensatedAmount = 0;
 
         try {
             await prisma.$transaction(async (tx) => {
@@ -109,33 +149,59 @@ const processScheduleRotations = async () => {
 
                     // Se houver um link ativo e ele for DIFERENTE do agendado, desativa o atual e ativa o agendado.
                     // O agendamento ignora inRotationPool (conforme regra de negócio).
-                    if (currentActive && currentActive.id !== schedule.enterpriseUrlId) {
-                        await tx.enterpriseUrl.update({
-                            where: { id: currentActive.id },
+                        if (currentActive && currentActive.id !== schedule.enterpriseUrlId) {
+                            // Consolidar cliques do link antigo antes de trocar
+                            const redisKey = `clicks:${currentActive.enterpriseId}:${categoryId}`;
+                            const redisCountStr = await redis.get(redisKey);
+                            const pending = redisCountStr ? parseInt(redisCountStr, 10) : 0;
+                            
+                            if (pending > 0) {
+                                await tx.enterpriseUrl.update({
+                                    where: { id: currentActive.id },
+                                    data: { countClicks: { increment: pending }, active: false, updateAt: new Date() }
+                                });
+
+                                const referenceDate = getTodayBRTReferenceDate();
+                                await tx.enterpriseCountDailyClicks.upsert({
+                                    where: { enterpriseId_referenceDate: { enterpriseId: currentActive.enterpriseId, referenceDate } },
+                                    create: { enterpriseId: currentActive.enterpriseId, referenceDate, dailyClicks: pending, createAt: new Date(), updateAt: new Date() },
+                                    update: { dailyClicks: { increment: pending }, updateAt: new Date() }
+                                });
+                                
+                                compensatedAmount = pending;
+                                const evalResult = await redis.eval(DECR_LUA_SCRIPT, 1, redisKey, pending);
+                                if (evalResult === 0) compensatedAmount = 0;
+                            } else {
+                                await tx.enterpriseUrl.update({
+                                    where: { id: currentActive.id },
+                                    data: { active: false, updateAt: new Date() }
+                                });
+                            }
+
+                            await tx.enterpriseUrl.update({
+                                where: { id: schedule.enterpriseUrlId },
+                                data: { active: true, updateAt: new Date() }
+                            });
+                        } else if (!currentActive) {
+                            // Edge case: nenhum link estava ativo, simplesmente ativamos o alvo
+                            await tx.enterpriseUrl.update({
+                                where: { id: schedule.enterpriseUrlId },
+                                data: { active: true, updateAt: new Date() }
+                            });
+                        }
+
+                        // Marca o schedule como inativo (concluído)
+                        await tx.urlSchedule.update({
+                            where: { id: schedule.id },
                             data: { active: false, updateAt: new Date() }
                         });
-
-                        await tx.enterpriseUrl.update({
-                            where: { id: schedule.enterpriseUrlId },
-                            data: { active: true, updateAt: new Date() }
-                        });
-                    } else if (!currentActive) {
-                        // Edge case: nenhum link estava ativo, simplesmente ativamos o alvo
-                        await tx.enterpriseUrl.update({
-                            where: { id: schedule.enterpriseUrlId },
-                            data: { active: true, updateAt: new Date() }
-                        });
                     }
-
-                    // Marca o schedule como inativo (concluído) indepedente se precisou trocar o link ou se ele já era o ativo
-                    await tx.urlSchedule.update({
-                        where: { id: schedule.id },
-                        data: { active: false, updateAt: new Date() }
-                    });
+                });
+            } catch (err) {
+                console.error(`Erro ao processar SCHEDULES da categoria ${categoryId}:`, err);
+                if (compensatedAmount > 0) {
+                    await redis.incrby(`clicks:${categorySchedules[0]?.enterpriseUrl?.enterpriseId}:${categoryId}`, compensatedAmount);
                 }
-            });
-        } catch (err) {
-            console.error(`Erro ao processar SCHEDULES da categoria ${categoryId}:`, err);
-        }
+            }
     }
 };

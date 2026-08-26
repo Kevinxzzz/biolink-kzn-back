@@ -11,8 +11,8 @@ export const updateCategoryZod = z.object({
 
 export const updateCategoryRotationZod = z.object({
     toggleType: z.nativeEnum(ToggleType),
-    limitClicks: z.number().int().positive().nullable().optional(),
-    timerInMinutes: z.number().int().positive().nullable().optional(),
+    limitClicks: z.number().int("O limite deve ser um número inteiro").positive("O limite de cliques deve ser maior que zero").optional().nullable(),
+    timerInMinutes: z.number().int("O tempo deve ser um número inteiro").positive("O tempo deve ser maior que zero").optional().nullable(),
 }).strict().superRefine((data, ctx) => {
     const isLimitNull = data.limitClicks === undefined || data.limitClicks === null;
     const isTimerNull = data.timerInMinutes === undefined || data.timerInMinutes === null;

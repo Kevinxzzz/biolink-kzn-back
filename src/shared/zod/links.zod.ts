@@ -12,7 +12,7 @@ export const updateLinkZod = z.object({
 }).strict();
 
 export const reorderLinksZod = z.object({
-    categoryId: z.string().uuid("O ID da categoria deve ser um UUID válido"),
+    categoryId: z.string().uuid("O ID da categoria deve ser um UUID válido").optional(),
     links: z.array(
         z.object({
             id: z.string().uuid("ID inválido"),

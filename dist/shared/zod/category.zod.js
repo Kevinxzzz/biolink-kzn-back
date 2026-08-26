@@ -11,8 +11,8 @@ exports.updateCategoryZod = zod_1.z.object({
 }).strict();
 exports.updateCategoryRotationZod = zod_1.z.object({
     toggleType: zod_1.z.nativeEnum(client_1.ToggleType),
-    limitClicks: zod_1.z.number().int().positive().nullable().optional(),
-    timerInMinutes: zod_1.z.number().int().positive().nullable().optional(),
+    limitClicks: zod_1.z.number().int("O limite deve ser um número inteiro").positive("O limite de cliques deve ser maior que zero").optional().nullable(),
+    timerInMinutes: zod_1.z.number().int("O tempo deve ser um número inteiro").positive("O tempo deve ser maior que zero").optional().nullable(),
 }).strict().superRefine((data, ctx) => {
     const isLimitNull = data.limitClicks === undefined || data.limitClicks === null;
     const isTimerNull = data.timerInMinutes === undefined || data.timerInMinutes === null;
