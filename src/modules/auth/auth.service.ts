@@ -47,6 +47,10 @@ export const loginIn = async ({ email, password }: LoginInput) => {
 
 export const registerEnterprise = async (data: import("../../shared/types/auth.type").RegisterEnterpriseInput) => {
     try {
+
+        const countEnterprise = (await prisma.enterprise.findMany()).length
+        if (countEnterprise > 2) throw new AppError("Limite de empresas cadastradas já excedido.", 409);
+
         const existingCompanyEmail = await prisma.enterprise.findFirst({ where: { email: data.company.email } });
         if (existingCompanyEmail) throw new AppError("E-mail da empresa já cadastrado.", 409);
 
@@ -98,7 +102,7 @@ export const registerEnterprise = async (data: import("../../shared/types/auth.t
         };
     } catch (error: any) {
         if (error instanceof AppError) throw error;
-        
+
         if (error.code === 'P2002') {
             throw new AppError("Dados já cadastrados no sistema.", 409);
         }
