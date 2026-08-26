@@ -3,6 +3,7 @@ import { AppError } from "../../shared/errors/appError";
 import type { CreateLinkInput, UpdateLinkInput, ReorderLinksInput } from "../../shared/zod/links.zod";
 import { redis } from "../../shared/database/redis";
 import { getNextEligibleLink } from "../../shared/utils/linkUtils";
+import { env } from "../../shared/config/env"
 
 const linkSelect = {
     id: true,
@@ -200,6 +201,104 @@ export const reorderLinks = async (enterpriseId: string, { categoryId, links }: 
 };
 
 export const processClickAndRedirect = async (enterpriseId: string, categoryId: string): Promise<string> => {
+    // 1. Busca Inicial
+    const link = await prisma.enterpriseUrl.findFirst({
+        where: { enterpriseId, categoryId, active: true },
+    });
+
+    if (!link) {
+        throw new AppError("Nenhum link ativo encontrado para esta categoria.", 404);
+    }
+
+    const config = await prisma.categoryRotation.findFirst({
+        where: { categoryId }
+    });
+
+    const key = `clicks:${enterpriseId}:${categoryId}`;
+
+    // 2. Consultar Cliques no Redis (sem incrementar)
+    const redisCountStr = await redis.get(key);
+    const redisCount = redisCountStr ? parseInt(redisCountStr, 10) : 0;
+
+    // 3. Avaliação LIMITCLICKS
+    if (config?.toggleType === "LIMITCLICKS" && config.limitClicks) {
+        const total = link.countClicks + redisCount + 1; // +1 é o clique atual
+
+        if (total >= config.limitClicks) {
+            // Fluxo de Rotação
+            const result = await prisma.$transaction(async (tx) => {
+                // Lock na categoria
+                await tx.$executeRaw`SELECT id FROM "enterprise_category" WHERE "id" = ${categoryId}::uuid FOR UPDATE`;
+
+                // Double-check
+                const currentActive = await tx.enterpriseUrl.findFirst({
+                    where: { enterpriseId, categoryId, active: true }
+                });
+
+                // Se não for mais o mesmo link, outra request rotacionou
+                if (currentActive?.id !== link.id) {
+                    return { rotatedByUs: false, link: currentActive || link };
+                }
+
+                // SIM, ainda é o mesmo link. Buscar próximo link elegível.
+                const nextLink = await getNextEligibleLink(tx, enterpriseId, categoryId, link);
+
+                // Se NÃO EXISTE próximo link elegível
+                if (!nextLink) {
+                    return { rotatedByUs: false, link };
+                }
+
+                // EXISTE próximo link
+                await tx.enterpriseUrl.update({
+                    where: { id: link.id },
+                    data: { active: false, countClicks: total, updateAt: new Date() }
+                });
+
+                const activatedLink = await tx.enterpriseUrl.update({
+                    where: { id: nextLink.id },
+                    data: { active: true, countClicks: 0, updateAt: new Date() }
+                });
+
+                return { rotatedByUs: true, link: activatedLink };
+            });
+
+            if (result.rotatedByUs) {
+                // Seta para 1 pois este clique vai para o NOVO link recém-ativado
+                await redis.set(key, 1);
+            } else {
+                // Ou a transação não rolou por falta de link, ou outra thread já rotacionou
+                await redis.incr(key);
+            }
+
+            return result.link.url;
+        }
+    }
+
+    // 4. Fluxo Normal
+    await redis.incr(key);
+    return link.url;
+};
+
+export const processClickAndRedirectOnlyEfootball = async (): Promise<string> => {
+    const categoryEfootball = await prisma.enterpriseCategory.findFirst({
+        where: {
+            name: "efootball"
+        }
+    })
+
+    if (!categoryEfootball) {
+        throw new AppError("Categoria efootball não cadastrada.", 404);
+    }
+
+    // categoryId do efootball mockado
+    const categoryId = categoryEfootball.id;
+
+    //enterpriseId da empresa kzn mockado
+    const enterpriseId = env.ENTERPRISE_ID_KZN;
+    if (!enterpriseId) {
+        throw new AppError("EnterpriseId indefinido.", 404);
+    }
+
     // 1. Busca Inicial
     const link = await prisma.enterpriseUrl.findFirst({
         where: { enterpriseId, categoryId, active: true },

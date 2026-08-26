@@ -9,6 +9,10 @@ const linksRoutes = Router();
 // Rota pública para redirecionamento e contabilização de cliques
 linksRoutes.get("/redirect/:enterpriseId/:categoryId", linksController.redirect);
 
+//rota temporária, quando o clinte quiser a melhoria para multi categorias eu ultilizo a rota normal.
+linksRoutes.get("/redirect/kzngg/efootball", linksController.redirectOnlyEfootballFromKzn);
+
+
 // Middleware aplicado a todas as rotas do módulo de links (autenticadas)
 linksRoutes.use(authenticate);
 linksRoutes.use(hasRole(UserRole.OWNER, UserRole.ADMIN));
