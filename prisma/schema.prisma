@@ -6,107 +6,229 @@ datasource db {
   provider = "postgresql"
 }
 
+enum ToggleType {
+  MANUAL
+  LIMITCLICKS
+  SCHEDULE
+  TIMER
+}
+
+enum Platform {
+  TIKTOK
+  INSTAGRAM
+  YOUTUBE
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+}
+
 model enterprise {
-  id                            String                          @id @default(uuid()) @db.Uuid
-  name                          String
-  email                         String
-  phone_number                  String
-  create_at                     DateTime
-  update_at                     DateTime
-  user                          user[]
-  influencer                    influencer[]
-  enterprise_url                enterprise_url[]
-  enterprise_toggle_url         enterprise_toggle_url?
-  enterprise_count_daily_clicks enterprise_count_daily_clicks[]
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  email       String
+  phoneNumber String   @map("phone_number")
+  createAt    DateTime @map("create_at")
+  updateAt    DateTime @map("update_at")
+
+  user                       user[]
+  influencer                 influencer[]
+  enterpriseUrl              enterpriseUrl[]
+  enterpriseCategory         enterpriseCategory[]
+  enterpriseCountDailyClicks enterpriseCountDailyClicks[]
+  enterpriseTokenInvites     enterpriseTokenInvite[]
+
+  @@unique([email, phoneNumber])
+}
+
+model enterpriseTokenInvite {
+  id           String   @id @default(uuid()) @db.Uuid
+  token        String
+  maxUses      Int?     @map("max_uses")
+  createdById  String   @map("created_by_id") @db.Uuid
+  enterpriseId String   @map("enterprise_id") @db.Uuid
+  createAt     DateTime @map("create_at")
+  updateAt     DateTime @map("update_at")
+
+  enterprise       enterprise        @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+  user             user              @relation(fields: [createdById], references: [id])
+  userTokenInvites userTokenInvite[]
+
+  @@unique([token])
+  @@map("enterprise_token_invite")
 }
 
 model user {
-  id            String     @id @default(uuid()) @db.Uuid
-  name          String
-  email         String
-  password      String
-  enterprise_id String     @db.Uuid
-  create_at     DateTime
-  update_at     DateTime
-  enterprise    enterprise @relation(fields: [enterprise_id], references: [id])
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String
+  email        String
+  password     String
+  roleId       String   @map("role_id") @db.Uuid
+  enterpriseId String   @map("enterprise_id") @db.Uuid
+  createAt     DateTime @map("create_at")
+  updateAt     DateTime @map("update_at")
+
+  enterprise             enterprise              @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+  role                   role                    @relation(fields: [roleId], references: [id])
+  enterpriseTokenInvites enterpriseTokenInvite[]
+  userTokenInvites       userTokenInvite[]
+
+  @@unique([email])
+  @@map("user")
+}
+
+model role {
+  id       String   @id @default(uuid()) @db.Uuid
+  role     UserRole
+  createAt DateTime @map("create_at")
+
+  user user[]
+
+  @@map("role")
+}
+
+model userTokenInvite {
+  id            String   @id @default(uuid()) @db.Uuid
+  usedBy        String   @map("used_by") @db.Uuid
+  tokenInviteId String   @map("token_invite_id") @db.Uuid
+  usedAt        DateTime @map("used_at")
+
+  enterpriseTokenInvite enterpriseTokenInvite @relation(fields: [tokenInviteId], references: [id], onDelete: Cascade)
+  user                  user                  @relation(fields: [usedBy], references: [id])
+
+  @@map("user_token_invite")
 }
 
 model influencer {
-  id                            String                          @id @default(uuid()) @db.Uuid
-  name                          String
-  email                         String
-  password                      String
-  counter_entries               Int
-  personal_url                  String
-  url_img_profile               String
-  img_key                       String
-  enterprise_id                 String                          @db.Uuid
-  create_at                     DateTime
-  update_at                     DateTime
-  enterprise                    enterprise                      @relation(fields: [enterprise_id], references: [id])
-  influencer_platform_url       influencer_platform_url[]
-  influencer_count_daily_clicks influencer_count_daily_clicks[]
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String
+  slug           String
+  email          String
+  password       String
+  counterEntries Int      @map("counter_entries")
+  personalUrl    String   @map("personal_url")
+  urlImgProfile  String?  @map("url_img_profile")
+  imgKey         String?  @map("img_key")
+  enterpriseId   String   @map("enterprise_id") @db.Uuid
+  createAt       DateTime @map("create_at")
+  updateAt       DateTime @map("update_at")
+
+  enterprise                 enterprise                   @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+  influencerPlatformUrl      influencerPlatformUrl[]
+  influencerCountDailyClicks influencerCountDailyClicks[]
+
+  @@unique([name, email, personalUrl, slug])
 }
 
-model influencer_platform_url {
-  id            String     @id @default(uuid()) @db.Uuid
-  url           String
-  platform      String
-  influencer_id String     @db.Uuid
-  create_at     DateTime
-  update_at     DateTime
-  influencer    influencer @relation(fields: [influencer_id], references: [id])
+model platform {
+  id       String   @id @default(uuid()) @db.Uuid
+  platform Platform
+  createAt DateTime @map("create_at")
+
+  influencerPlatformUrl influencerPlatformUrl[]
 }
 
-model influencer_count_daily_clicks {
+model influencerPlatformUrl {
+  id           String   @id @default(uuid()) @db.Uuid
+  url          String
+  platformId   String   @map("platform_id") @db.Uuid
+  influencerId String   @map("influencer_id") @db.Uuid
+  createAt     DateTime @map("create_at")
+  updateAt     DateTime @map("update_at")
+
+  influencer influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+  platform   platform   @relation(fields: [platformId], references: [id])
+
+  @@map("influencer_platform_url")
+}
+
+model influencerCountDailyClicks {
+  id            String   @id @default(uuid()) @db.Uuid
+  dailyClicks   Int      @map("daily_clicks")
+  referenceDate DateTime @map("reference_date") @db.Date
+  influencerId  String   @map("influencer_id") @db.Uuid
+  createAt      DateTime @map("create_at")
+  updateAt      DateTime @map("update_at")
+
+  influencer influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+
+  @@unique([influencerId, referenceDate])
+  @@map("influencer_count_daily_clicks")
+}
+
+model enterpriseUrl {
+  id             String   @id @default(uuid()) @db.Uuid
+  title          String
+  url            String
+  countClicks    Int      @map("count_clicks")
+  active         Boolean
+  order          Int
+  inRotationPool Boolean  @default(true) @map("in_rotation_pool")
+  enterpriseId   String   @map("enterprise_id") @db.Uuid
+  categoryId     String   @map("category_id") @db.Uuid
+  createAt       DateTime @map("create_at")
+  updateAt       DateTime @map("update_at")
+
+  enterprise         enterprise         @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+  enterpriseCategory enterpriseCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  urlSchedule        urlSchedule[]
+
+  @@unique([url])
+  @@map("enterprise_url")
+}
+
+model urlSchedule {
+  id              String   @id @default(uuid()) @db.Uuid
+  enterpriseUrlId String   @map("enterprise_url_id") @db.Uuid
+  dateTime        DateTime @map("date_time")
+  active          Boolean  @default(true)
+  updateAt        DateTime @map("update_at")
+
+  enterpriseUrl enterpriseUrl @relation(fields: [enterpriseUrlId], references: [id], onDelete: Cascade)
+
+  @@map("url_schedule")
+}
+
+model enterpriseCategory {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String
+  enterpriseId String   @map("enterprise_id") @db.Uuid
+  createAt     DateTime @map("create_at")
+  updateAt     DateTime @map("update_at")
+
+  enterprise       enterprise        @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+  enterpriseUrl    enterpriseUrl[]
+  categoryRotation categoryRotation?
+
+  @@unique([name, enterpriseId])
+  @@map("enterprise_category")
+}
+
+model categoryRotation {
   id             String     @id @default(uuid()) @db.Uuid
-  daily_clicks   Int
-  reference_date DateTime   @db.Date
-  influencer_id  String     @db.Uuid
-  create_at      DateTime
-  update_at      DateTime
-  influencer     influencer @relation(fields: [influencer_id], references: [id])
+  toggleType     ToggleType @default(MANUAL) @map("toggle_type")
+  limitClicks    Int?       @map("limit_clicks")
+  timerInMinutes Int?       @map("timer_in_minutes")
+  timerStartedAt DateTime?  @map("timer_started_at")
+  categoryId     String     @unique @map("category_id") @db.Uuid
+  updateAt       DateTime   @map("update_at")
+
+  enterpriseCategory enterpriseCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@map("category_rotation")
 }
 
-model enterprise_url {
-  id                  String                @id @default(uuid()) @db.Uuid
-  title               String
-  url                 String
-  count_clicks        Int
-  active              Boolean
-  order               Int
-  in_rotation_pool    Boolean
-  enterprise_id       String                @db.Uuid
-  create_at           DateTime
-  update_at           DateTime
-  enterprise          enterprise            @relation(fields: [enterprise_id], references: [id])
-  toggle_url_schedule toggle_url_schedule[]
-}
+model enterpriseCountDailyClicks {
+  id            String   @id @default(uuid()) @db.Uuid
+  dailyClicks   Int      @map("daily_clicks")
+  referenceDate DateTime @map("reference_date") @db.Date
+  enterpriseId  String   @map("enterprise_id") @db.Uuid
+  createAt      DateTime @map("create_at")
+  updateAt      DateTime @map("update_at")
 
-model toggle_url_schedule {
-  id                String         @id @default(uuid()) @db.Uuid
-  enterprise_url_id String         @db.Uuid
-  date_time         DateTime
-  update_at         DateTime
-  enterprise_url    enterprise_url @relation(fields: [enterprise_url_id], references: [id])
-}
+  enterprise enterprise @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
 
-model enterprise_toggle_url {
-  id               String     @id @default(uuid()) @db.Uuid
-  toggle_type      String
-  limit_clicks     Int
-  timer_in_minutes Int
-  enterprise_id    String     @unique @db.Uuid
-  update_at        DateTime
-  enterprise       enterprise @relation(fields: [enterprise_id], references: [id])
-}
-
-model enterprise_count_daily_clicks {
-  id             String     @id @default(uuid()) @db.Uuid
-  daily_clicks   Int
-  reference_date DateTime   @db.Date
-  enterprise_id  String     @db.Uuid
-  create_at      DateTime
-  update_at      DateTime
-  enterprise     enterprise @relation(fields: [enterprise_id], references: [id])
+  @@unique([enterpriseId, referenceDate])
+  @@map("enterprise_count_daily_clicks")
 }
