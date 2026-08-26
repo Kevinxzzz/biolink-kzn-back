@@ -65,11 +65,28 @@ export const createLink = async (enterpriseId: string, data: CreateLinkInput) =>
 };
 
 export const getLinks = async (enterpriseId: string, categoryId?: string) => {
-    return await prisma.enterpriseUrl.findMany({
+    const links = await prisma.enterpriseUrl.findMany({
         where: { enterpriseId, categoryId: categoryId || undefined },
         select: linkSelect,
         orderBy: [{ categoryId: 'asc' }, { order: 'asc' }]
     });
+
+    return await Promise.all(
+        links.map(async (link) => {
+            if (!link.active) {
+                return link;
+            }
+
+            const key = `clicks:${enterpriseId}:${link.categoryId}`;
+            const redisCountStr = await redis.get(key);
+            const redisCount = redisCountStr ? parseInt(redisCountStr, 10) : 0;
+
+            return {
+                ...link,
+                countClicks: link.countClicks + (isNaN(redisCount) ? 0 : redisCount)
+            };
+        })
+    );
 };
 
 export const getLinkById = async (id: string, enterpriseId: string) => {
@@ -222,9 +239,9 @@ export const processClickAndRedirect = async (enterpriseId: string, categoryId: 
 
     // 3. Avaliação LIMITCLICKS
     if (config?.toggleType === "LIMITCLICKS" && config.limitClicks) {
-        const total = link.countClicks + redisCount + 1; // +1 é o clique atual
+        const clicksRegistered = link.countClicks + redisCount; // Apenas cliques anteriores
 
-        if (total >= config.limitClicks) {
+        if (clicksRegistered >= config.limitClicks) {
             // Fluxo de Rotação
             const result = await prisma.$transaction(async (tx) => {
                 // Lock na categoria
@@ -251,7 +268,7 @@ export const processClickAndRedirect = async (enterpriseId: string, categoryId: 
                 // EXISTE próximo link
                 await tx.enterpriseUrl.update({
                     where: { id: link.id },
-                    data: { active: false, countClicks: total, updateAt: new Date() }
+                    data: { active: false, countClicks: clicksRegistered, updateAt: new Date() }
                 });
 
                 const activatedLink = await tx.enterpriseUrl.update({
@@ -297,8 +314,8 @@ export const processClickAndRedirectOnlyEfootball = async (): Promise<string> =>
     const enterpriseId = env.ENTERPRISE_ID_KZN;
     if (!enterpriseId) {
         throw new AppError("EnterpriseId indefinido.", 404);
-    }
 
+    }
     // 1. Busca Inicial
     const link = await prisma.enterpriseUrl.findFirst({
         where: { enterpriseId, categoryId, active: true },
@@ -320,9 +337,9 @@ export const processClickAndRedirectOnlyEfootball = async (): Promise<string> =>
 
     // 3. Avaliação LIMITCLICKS
     if (config?.toggleType === "LIMITCLICKS" && config.limitClicks) {
-        const total = link.countClicks + redisCount + 1; // +1 é o clique atual
+        const clicksRegistered = link.countClicks + redisCount; // Apenas cliques anteriores
 
-        if (total >= config.limitClicks) {
+        if (clicksRegistered >= config.limitClicks) {
             // Fluxo de Rotação
             const result = await prisma.$transaction(async (tx) => {
                 // Lock na categoria
@@ -349,7 +366,7 @@ export const processClickAndRedirectOnlyEfootball = async (): Promise<string> =>
                 // EXISTE próximo link
                 await tx.enterpriseUrl.update({
                     where: { id: link.id },
-                    data: { active: false, countClicks: total, updateAt: new Date() }
+                    data: { active: false, countClicks: clicksRegistered, updateAt: new Date() }
                 });
 
                 const activatedLink = await tx.enterpriseUrl.update({

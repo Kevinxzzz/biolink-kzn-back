@@ -80,7 +80,7 @@ describe("Links Module", () => {
         });
 
         it("deve listar links com enterpriseId correto", async () => {
-            (prisma.enterpriseUrl.findMany as jest.Mock).mockResolvedValue([{ id: "link1" }]);
+            (prisma.enterpriseUrl.findMany as jest.Mock).mockResolvedValue([{ id: "link1", active: false, countClicks: 0 }]);
             const result = await getLinks("ent1");
             expect(prisma.enterpriseUrl.findMany).toHaveBeenCalledWith({
                 where: { enterpriseId: "ent1", categoryId: undefined },
@@ -88,6 +88,58 @@ describe("Links Module", () => {
                 orderBy: [{ categoryId: "asc" }, { order: "asc" }]
             });
             expect(result.length).toBe(1);
+        });
+
+        it("deve somar cliques do Redis somente para o link ativo e não alterar inativos", async () => {
+            (prisma.enterpriseUrl.findMany as jest.Mock).mockResolvedValue([
+                { id: "linkA", categoryId: "cat1", active: true, countClicks: 10 },
+                { id: "linkB", categoryId: "cat1", active: false, countClicks: 25 },
+                { id: "linkC", categoryId: "cat1", active: false, countClicks: 8 },
+            ]);
+            (redis.get as jest.Mock).mockResolvedValue("5");
+
+            const result = await getLinks("ent1", "cat1");
+
+            expect(redis.get).toHaveBeenCalledWith("clicks:ent1:cat1");
+            expect(result).toEqual([
+                { id: "linkA", categoryId: "cat1", active: true, countClicks: 15 },
+                { id: "linkB", categoryId: "cat1", active: false, countClicks: 25 },
+                { id: "linkC", categoryId: "cat1", active: false, countClicks: 8 },
+            ]);
+            // Garante que não realiza alterações no Redis ou banco
+            expect(redis.set).not.toHaveBeenCalled();
+            expect(redis.incr).not.toHaveBeenCalled();
+            expect(prisma.enterpriseUrl.update).not.toHaveBeenCalled();
+        });
+
+        it("deve retornar apenas o countClicks do PostgreSQL se link ativo não possuir contador no Redis", async () => {
+            (prisma.enterpriseUrl.findMany as jest.Mock).mockResolvedValue([
+                { id: "linkA", categoryId: "cat1", active: true, countClicks: 10 }
+            ]);
+            (redis.get as jest.Mock).mockResolvedValue(null);
+
+            const result = await getLinks("ent1", "cat1");
+
+            expect(result[0].countClicks).toBe(10);
+        });
+
+        it("deve isolar contadores de categorias e empresas distintas no Redis", async () => {
+            (prisma.enterpriseUrl.findMany as jest.Mock).mockResolvedValue([
+                { id: "linkA1", categoryId: "catA", active: true, countClicks: 10 },
+                { id: "linkB1", categoryId: "catB", active: true, countClicks: 20 }
+            ]);
+            (redis.get as jest.Mock).mockImplementation((key: string) => {
+                if (key === "clicks:ent1:catA") return Promise.resolve("7");
+                if (key === "clicks:ent1:catB") return Promise.resolve("3");
+                return Promise.resolve(null);
+            });
+
+            const result = await getLinks("ent1");
+
+            expect(redis.get).toHaveBeenCalledWith("clicks:ent1:catA");
+            expect(redis.get).toHaveBeenCalledWith("clicks:ent1:catB");
+            expect(result[0].countClicks).toBe(17);
+            expect(result[1].countClicks).toBe(23);
         });
     });
 
@@ -176,7 +228,7 @@ describe("Links Module", () => {
                 message: "O payload não pode conter ordens duplicadas"
             });
         });
-        
+
         it("rejeita reorder incompleto da categoria", async () => {
             const payload = { categoryId: "cat1", links: [{ id: "l1", order: 1 }] };
             mockTx.enterpriseUrl.count.mockResolvedValue(2); // DB has 2 links
@@ -197,7 +249,7 @@ describe("Links Module", () => {
                 message: "Alguns links não foram encontrados, pertencem a outra empresa ou categoria diferente"
             });
         });
-        
+
         it("rejeita payload inválido pelo Zod", () => {
             const result = reorderLinksZod.safeParse({ links: [{ id: "not-uuid", order: -1 }] });
             expect(result.success).toBe(false);
@@ -224,7 +276,7 @@ describe("Links Module", () => {
         it("deve rotacionar quando LIMITCLICKS for atingido", async () => {
             (prisma.enterpriseUrl.findFirst as jest.Mock).mockResolvedValue({ id: "link1", url: "http://link1.com", countClicks: 80, order: 1 });
             (prisma.categoryRotation.findFirst as jest.Mock).mockResolvedValue({ toggleType: "LIMITCLICKS", limitClicks: 100 });
-            (redis.get as jest.Mock).mockResolvedValue("19"); // 80 + 19 + 1 = 100
+            (redis.get as jest.Mock).mockResolvedValue("20"); // 80 + 20 = 100 (já atingiu o limite antes deste clique)
 
             mockTx.enterpriseUrl.findFirst.mockResolvedValue({ id: "link1" }); // Double check: ainda é o mesmo
             mockTx.enterpriseUrl.findMany.mockResolvedValue([
@@ -241,7 +293,7 @@ describe("Links Module", () => {
             expect(mockTx.$executeRaw).toHaveBeenCalled();
             expect(mockTx.enterpriseUrl.update).toHaveBeenCalledWith({
                 where: { id: "link1" },
-                data: { active: false, countClicks: 100, updateAt: expect.any(Date) } // consolidado
+                data: { active: false, countClicks: 100, updateAt: expect.any(Date) } // consolidado com 100
             });
             expect(mockTx.enterpriseUrl.update).toHaveBeenCalledWith({
                 where: { id: "link2" },
@@ -251,10 +303,91 @@ describe("Links Module", () => {
             expect(url).toBe("http://link2.com");
         });
 
+        it("com limitClicks = 1, primeiro clique (0 registrados) não deve rotacionar, mas deve incrementar", async () => {
+            (prisma.enterpriseUrl.findFirst as jest.Mock).mockResolvedValue({ id: "linkA", url: "http://linkA.com", countClicks: 0, order: 1 });
+            (prisma.categoryRotation.findFirst as jest.Mock).mockResolvedValue({ toggleType: "LIMITCLICKS", limitClicks: 1 });
+            (redis.get as jest.Mock).mockResolvedValue("0"); // 0 registrados
+
+            const url = await processClickAndRedirect("ent1", "cat1");
+
+            // Não rotacionou
+            expect(mockTx.enterpriseUrl.update).not.toHaveBeenCalled();
+            // Pertence ao atual
+            expect(redis.incr).toHaveBeenCalledWith("clicks:ent1:cat1");
+            expect(url).toBe("http://linkA.com");
+        });
+
+        it("com limitClicks = 1, segundo clique (1 registrado) DEVE rotacionar, e clique pertence ao novo", async () => {
+            (prisma.enterpriseUrl.findFirst as jest.Mock).mockResolvedValue({ id: "linkA", url: "http://linkA.com", countClicks: 0, order: 1 });
+            (prisma.categoryRotation.findFirst as jest.Mock).mockResolvedValue({ toggleType: "LIMITCLICKS", limitClicks: 1 });
+            (redis.get as jest.Mock).mockResolvedValue("1"); // 1 já registrado antes (do primeiro clique)
+
+            mockTx.enterpriseUrl.findFirst.mockResolvedValue({ id: "linkA" });
+            mockTx.enterpriseUrl.findMany.mockResolvedValue([
+                { id: "linkA", order: 1 },
+                { id: "linkB", url: "http://linkB.com", order: 2 }
+            ]);
+            mockTx.enterpriseUrl.update.mockImplementation(({ data }: any) => {
+                if (data.active) return { id: "linkB", url: "http://linkB.com" };
+                return { id: "linkA" };
+            });
+
+            const url = await processClickAndRedirect("ent1", "cat1");
+
+            expect(mockTx.enterpriseUrl.update).toHaveBeenCalledWith({
+                where: { id: "linkA" },
+                data: { active: false, countClicks: 1, updateAt: expect.any(Date) }
+            });
+            expect(mockTx.enterpriseUrl.update).toHaveBeenCalledWith({
+                where: { id: "linkB" },
+                data: { active: true, countClicks: 0, updateAt: expect.any(Date) }
+            });
+            // O novo clique entra pro link novo
+            expect(redis.set).toHaveBeenCalledWith("clicks:ent1:cat1", 1);
+            expect(url).toBe("http://linkB.com");
+        });
+
+        it("com limitClicks = 2, segundo clique (1 registrado) não rotaciona", async () => {
+            (prisma.enterpriseUrl.findFirst as jest.Mock).mockResolvedValue({ id: "linkA", url: "http://linkA.com", countClicks: 0, order: 1 });
+            (prisma.categoryRotation.findFirst as jest.Mock).mockResolvedValue({ toggleType: "LIMITCLICKS", limitClicks: 2 });
+            (redis.get as jest.Mock).mockResolvedValue("1"); // 1 registrado
+
+            const url = await processClickAndRedirect("ent1", "cat1");
+
+            expect(mockTx.enterpriseUrl.update).not.toHaveBeenCalled();
+            expect(redis.incr).toHaveBeenCalledWith("clicks:ent1:cat1");
+            expect(url).toBe("http://linkA.com");
+        });
+
+        it("com limitClicks = 2, terceiro clique (2 registrados) rotaciona", async () => {
+            (prisma.enterpriseUrl.findFirst as jest.Mock).mockResolvedValue({ id: "linkA", url: "http://linkA.com", countClicks: 0, order: 1 });
+            (prisma.categoryRotation.findFirst as jest.Mock).mockResolvedValue({ toggleType: "LIMITCLICKS", limitClicks: 2 });
+            (redis.get as jest.Mock).mockResolvedValue("2"); // 2 registrados
+
+            mockTx.enterpriseUrl.findFirst.mockResolvedValue({ id: "linkA" });
+            mockTx.enterpriseUrl.findMany.mockResolvedValue([
+                { id: "linkA", order: 1 },
+                { id: "linkB", url: "http://linkB.com", order: 2 }
+            ]);
+            mockTx.enterpriseUrl.update.mockImplementation(({ data }: any) => {
+                if (data.active) return { id: "linkB", url: "http://linkB.com" };
+                return { id: "linkA" };
+            });
+
+            const url = await processClickAndRedirect("ent1", "cat1");
+
+            expect(mockTx.enterpriseUrl.update).toHaveBeenCalledWith({
+                where: { id: "linkA" },
+                data: { active: false, countClicks: 2, updateAt: expect.any(Date) }
+            });
+            expect(redis.set).toHaveBeenCalledWith("clicks:ent1:cat1", 1);
+            expect(url).toBe("http://linkB.com");
+        });
+
         it("NÃO deve rotacionar se double-check indicar que o link mudou (concorrência)", async () => {
             (prisma.enterpriseUrl.findFirst as jest.Mock).mockResolvedValue({ id: "link1", url: "http://link1.com", countClicks: 99, order: 1 });
             (prisma.categoryRotation.findFirst as jest.Mock).mockResolvedValue({ toggleType: "LIMITCLICKS", limitClicks: 100 });
-            (redis.get as jest.Mock).mockResolvedValue("0"); 
+            (redis.get as jest.Mock).mockResolvedValue("0");
 
             // Double check: agora o link2 está ativo! Alguém já rotacionou.
             mockTx.enterpriseUrl.findFirst.mockResolvedValue({ id: "link2", url: "http://link2.com" });
@@ -271,7 +404,7 @@ describe("Links Module", () => {
         it("deve apenas incrementar no Redis se não houver próximo link elegível", async () => {
             (prisma.enterpriseUrl.findFirst as jest.Mock).mockResolvedValue({ id: "link1", url: "http://link1.com", countClicks: 99, order: 1 });
             (prisma.categoryRotation.findFirst as jest.Mock).mockResolvedValue({ toggleType: "LIMITCLICKS", limitClicks: 100 });
-            (redis.get as jest.Mock).mockResolvedValue("0"); 
+            (redis.get as jest.Mock).mockResolvedValue("0");
 
             mockTx.enterpriseUrl.findFirst.mockResolvedValue({ id: "link1" });
             mockTx.enterpriseUrl.findMany.mockResolvedValue([
