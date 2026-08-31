@@ -8,6 +8,7 @@ const envSchema = z.object({
     REDIS_URL: z.string().default("redis://localhost:6379"),
     JWT_SECRET: z.string().min(10, "JWT_SECRET deve ter ao menos 10 caracteres").default("default-jwt-secret-key-for-dev-and-test"),
     FRONTEND_URL: z.string().optional(),
+    FRONTEND_URL_STAGE: z.string().optional(),
     FRONTEND_URL_LOCAL: z.string().optional(),
     TRUST_PROXY: z.string().optional(),
     ENTERPRISE_ID_KZN: z.string()
