@@ -13,6 +13,9 @@ import { env } from "../config/env";
 
 jest.mock("../database/prisma", () => ({
     prisma: {
+        application: {
+            findUnique: jest.fn()
+        },
         user: {
             findUnique: jest.fn()
         },
@@ -30,8 +33,12 @@ describe("Middlewares Layer Test Suite", () => {
     let mockNext: jest.Mock;
 
     beforeEach(() => {
+        jest.clearAllMocks();
         mockReq = {
-            headers: {},
+            hostname: "localhost",
+            headers: {
+                origin: "http://localhost:3000"
+            },
             params: {},
             query: {}
         };
@@ -40,11 +47,17 @@ describe("Middlewares Layer Test Suite", () => {
             json: jest.fn()
         };
         mockNext = jest.fn();
-        jest.clearAllMocks();
+
+        (prisma.application.findUnique as jest.Mock).mockResolvedValue({
+            id: "app-id-1",
+            name: "KZN",
+            domain: "localhost:3000"
+        });
     });
 
     describe("authenticate Middleware", () => {
         it("should throw 401 when Authorization header is missing", async () => {
+            delete mockReq.headers;
             await authenticate(mockReq as Request, mockRes as Response, mockNext);
             expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
             const error = mockNext.mock.calls[0][0];
@@ -53,7 +66,7 @@ describe("Middlewares Layer Test Suite", () => {
         });
 
         it("should throw 401 when token format is invalid", async () => {
-            mockReq.headers = { authorization: "Bearer" };
+            mockReq.headers = { origin: "http://localhost:3000", authorization: "Bearer" };
             await authenticate(mockReq as Request, mockRes as Response, mockNext);
             expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
             const error = mockNext.mock.calls[0][0];
@@ -62,7 +75,7 @@ describe("Middlewares Layer Test Suite", () => {
         });
 
         it("should throw 401 when JWT verification fails", async () => {
-            mockReq.headers = { authorization: "Bearer invalidtoken" };
+            mockReq.headers = { origin: "http://localhost:3000", authorization: "Bearer invalidtoken" };
             (jwt.verify as jest.Mock).mockImplementation(() => {
                 throw new Error("JWT error");
             });
@@ -74,18 +87,115 @@ describe("Middlewares Layer Test Suite", () => {
             expect(error.message).toBe("Token expirado ou inválido");
         });
 
-        it("should authenticate USER with OWNER role correctly", async () => {
+        it("should throw 403 when request domain is missing", async () => {
+            (mockReq as any).hostname = undefined;
             mockReq.headers = { authorization: "Bearer validtoken" };
             (jwt.verify as jest.Mock).mockReturnValue({
                 sub: "user-id-1",
                 accountType: "USER",
-                role: UserRole.OWNER
+                role: UserRole.OWNER,
+                applicationId: "app-id-1"
+            });
+
+            await authenticate(mockReq as Request, mockRes as Response, mockNext);
+            expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
+            const error = mockNext.mock.calls[0][0];
+            expect(error.statusCode).toBe(403);
+            expect(error.message).toBe("Aplicação não identificada.");
+        });
+
+        it("should throw 403 when application is not found for domain", async () => {
+            (mockReq as any).hostname = "unknown.com";
+            mockReq.headers = { authorization: "Bearer validtoken" };
+            (jwt.verify as jest.Mock).mockReturnValue({
+                sub: "user-id-1",
+                accountType: "USER",
+                role: UserRole.OWNER,
+                applicationId: "app-id-1"
+            });
+            (prisma.application.findUnique as jest.Mock).mockResolvedValue(null);
+
+            await authenticate(mockReq as Request, mockRes as Response, mockNext);
+            expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
+            const error = mockNext.mock.calls[0][0];
+            expect(error.statusCode).toBe(403);
+            expect(error.message).toBe("Aplicação não encontrada ou não autorizada.");
+        });
+
+        it("should throw 403 when token applicationId does not match current application", async () => {
+            mockReq.headers = { origin: "http://localhost:3000", authorization: "Bearer validtoken" };
+            (jwt.verify as jest.Mock).mockReturnValue({
+                sub: "user-id-1",
+                accountType: "USER",
+                role: UserRole.OWNER,
+                applicationId: "other-app-id"
+            });
+
+            await authenticate(mockReq as Request, mockRes as Response, mockNext);
+            expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
+            const error = mockNext.mock.calls[0][0];
+            expect(error.statusCode).toBe(403);
+            expect(error.message).toBe("Acesso não permitido para esta aplicação.");
+        });
+
+        it("should throw 403 when user enterprise applicationId does not match current application", async () => {
+            mockReq.headers = { origin: "http://localhost:3000", authorization: "Bearer validtoken" };
+            (jwt.verify as jest.Mock).mockReturnValue({
+                sub: "user-id-1",
+                accountType: "USER",
+                role: UserRole.OWNER,
+                applicationId: "app-id-1"
+            });
+            (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+                id: "user-id-1",
+                email: "owner@test.com",
+                enterpriseId: "enterprise-id-1",
+                enterprise: { applicationId: "different-app-id" },
+                role: { role: UserRole.OWNER }
+            });
+
+            await authenticate(mockReq as Request, mockRes as Response, mockNext);
+            expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
+            const error = mockNext.mock.calls[0][0];
+            expect(error.statusCode).toBe(403);
+            expect(error.message).toBe("Acesso não permitido para esta aplicação.");
+        });
+
+        it("should throw 403 when influencer enterprise applicationId does not match current application", async () => {
+            mockReq.headers = { origin: "http://localhost:3000", authorization: "Bearer validtoken" };
+            (jwt.verify as jest.Mock).mockReturnValue({
+                sub: "inf-1",
+                accountType: "INFLUENCER",
+                applicationId: "app-id-1"
+            });
+            (prisma.influencer.findUnique as jest.Mock).mockResolvedValue({
+                id: "inf-1",
+                email: "inf@test.com",
+                enterpriseId: "enterprise-id-1",
+                enterprise: { applicationId: "different-app-id" }
+            });
+
+            await authenticate(mockReq as Request, mockRes as Response, mockNext);
+            expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
+            const error = mockNext.mock.calls[0][0];
+            expect(error.statusCode).toBe(403);
+            expect(error.message).toBe("Acesso não permitido para esta aplicação.");
+        });
+
+        it("should authenticate USER with OWNER role correctly", async () => {
+            mockReq.headers = { origin: "http://localhost:3000", authorization: "Bearer validtoken" };
+            (jwt.verify as jest.Mock).mockReturnValue({
+                sub: "user-id-1",
+                accountType: "USER",
+                role: UserRole.OWNER,
+                applicationId: "app-id-1"
             });
 
             (prisma.user.findUnique as jest.Mock).mockResolvedValue({
                 id: "user-id-1",
                 email: "owner@test.com",
                 enterpriseId: "enterprise-id-1",
+                enterprise: { applicationId: "app-id-1" },
                 role: { role: UserRole.OWNER }
             });
 
@@ -95,6 +205,7 @@ describe("Middlewares Layer Test Suite", () => {
                 id: "user-id-1",
                 email: "owner@test.com",
                 enterpriseId: "enterprise-id-1",
+                applicationId: "app-id-1",
                 accountType: "USER",
                 role: UserRole.OWNER
             });
@@ -102,17 +213,19 @@ describe("Middlewares Layer Test Suite", () => {
         });
 
         it("should authenticate USER with ADMIN role correctly", async () => {
-            mockReq.headers = { authorization: "Bearer validtoken" };
+            mockReq.headers = { origin: "http://localhost:3000", authorization: "Bearer validtoken" };
             (jwt.verify as jest.Mock).mockReturnValue({
                 sub: "user-id-2",
                 accountType: "USER",
-                role: UserRole.ADMIN
+                role: UserRole.ADMIN,
+                applicationId: "app-id-1"
             });
 
             (prisma.user.findUnique as jest.Mock).mockResolvedValue({
                 id: "user-id-2",
                 email: "admin@test.com",
                 enterpriseId: "enterprise-id-1",
+                enterprise: { applicationId: "app-id-1" },
                 role: { role: UserRole.ADMIN }
             });
 
@@ -122,6 +235,7 @@ describe("Middlewares Layer Test Suite", () => {
                 id: "user-id-2",
                 email: "admin@test.com",
                 enterpriseId: "enterprise-id-1",
+                applicationId: "app-id-1",
                 accountType: "USER",
                 role: UserRole.ADMIN
             });
@@ -129,16 +243,18 @@ describe("Middlewares Layer Test Suite", () => {
         });
 
         it("should authenticate INFLUENCER correctly without user role", async () => {
-            mockReq.headers = { authorization: "Bearer validtoken" };
+            mockReq.headers = { origin: "http://localhost:3000", authorization: "Bearer validtoken" };
             (jwt.verify as jest.Mock).mockReturnValue({
                 sub: "influencer-id-1",
-                accountType: "INFLUENCER"
+                accountType: "INFLUENCER",
+                applicationId: "app-id-1"
             });
 
             (prisma.influencer.findUnique as jest.Mock).mockResolvedValue({
                 id: "influencer-id-1",
                 email: "influencer@test.com",
-                enterpriseId: "enterprise-id-1"
+                enterpriseId: "enterprise-id-1",
+                enterprise: { applicationId: "app-id-1" }
             });
 
             await authenticate(mockReq as Request, mockRes as Response, mockNext);
@@ -147,16 +263,18 @@ describe("Middlewares Layer Test Suite", () => {
                 id: "influencer-id-1",
                 email: "influencer@test.com",
                 enterpriseId: "enterprise-id-1",
+                applicationId: "app-id-1",
                 accountType: "INFLUENCER"
             });
             expect(mockNext).toHaveBeenCalledWith();
         });
 
         it("should throw 401 when user is not found in database", async () => {
-            mockReq.headers = { authorization: "Bearer validtoken" };
+            mockReq.headers = { origin: "http://localhost:3000", authorization: "Bearer validtoken" };
             (jwt.verify as jest.Mock).mockReturnValue({
                 sub: "non-existent",
-                accountType: "USER"
+                accountType: "USER",
+                applicationId: "app-id-1"
             });
             (prisma.user.findUnique as jest.Mock).mockResolvedValue(null);
 
@@ -166,6 +284,165 @@ describe("Middlewares Layer Test Suite", () => {
             const error = mockNext.mock.calls[0][0];
             expect(error.statusCode).toBe(401);
             expect(error.message).toBe("Usuário não encontrado");
+        });
+
+        describe("Multi-Tenant Isolation (KZN ↔ Alecio)", () => {
+            it("should pass when KZN JWT accesses KZN domain", async () => {
+                // (prisma.application.findUnique as jest.Mock) already returns KZN by default
+                mockReq.headers = { origin: "http://localhost:3000", authorization: "Bearer validtoken" };
+                (jwt.verify as jest.Mock).mockReturnValue({
+                    sub: "kzn-user-1",
+                    accountType: "USER",
+                    role: UserRole.OWNER,
+                    applicationId: "app-id-1" // KZN
+                });
+                (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+                    id: "kzn-user-1",
+                    email: "kzn@test.com",
+                    enterpriseId: "kzn-ent-1",
+                    enterprise: { applicationId: "app-id-1" },
+                    role: { role: UserRole.OWNER }
+                });
+
+                await authenticate(mockReq as Request, mockRes as Response, mockNext);
+                expect(mockNext).toHaveBeenCalledWith(); // Passes
+            });
+
+            it("should throw 403 when KZN JWT accesses Alecio domain", async () => {
+                (prisma.application.findUnique as jest.Mock).mockResolvedValue({
+                    id: "app-id-2", // Alecio
+                    name: "Alecio",
+                    domain: "alecio.com"
+                });
+                (mockReq as any).hostname = "alecio.com";
+                mockReq.headers = { authorization: "Bearer validtoken" };
+                
+                (jwt.verify as jest.Mock).mockReturnValue({
+                    sub: "kzn-user-1",
+                    accountType: "USER",
+                    role: UserRole.OWNER,
+                    applicationId: "app-id-1" // KZN
+                });
+
+                await authenticate(mockReq as Request, mockRes as Response, mockNext);
+                expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
+                const error = mockNext.mock.calls[0][0];
+                expect(error.statusCode).toBe(403);
+            });
+
+            it("should pass when Alecio JWT accesses Alecio domain", async () => {
+                (prisma.application.findUnique as jest.Mock).mockResolvedValue({
+                    id: "app-id-2", // Alecio
+                    name: "Alecio",
+                    domain: "alecio.com"
+                });
+                (mockReq as any).hostname = "alecio.com";
+                mockReq.headers = { authorization: "Bearer validtoken" };
+                
+                (jwt.verify as jest.Mock).mockReturnValue({
+                    sub: "alecio-user-1",
+                    accountType: "USER",
+                    role: UserRole.OWNER,
+                    applicationId: "app-id-2" // Alecio
+                });
+                (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+                    id: "alecio-user-1",
+                    email: "alecio@test.com",
+                    enterpriseId: "alecio-ent-1",
+                    enterprise: { applicationId: "app-id-2" },
+                    role: { role: UserRole.OWNER }
+                });
+
+                await authenticate(mockReq as Request, mockRes as Response, mockNext);
+                expect(mockNext).toHaveBeenCalledWith(); // Passes
+            });
+
+            it("should throw 403 when Alecio JWT accesses KZN domain", async () => {
+                // mockReq.hostname is "localhost" (KZN) by default
+                mockReq.headers = { origin: "http://localhost:3000", authorization: "Bearer validtoken" };
+                (jwt.verify as jest.Mock).mockReturnValue({
+                    sub: "alecio-user-1",
+                    accountType: "USER",
+                    role: UserRole.OWNER,
+                    applicationId: "app-id-2" // Alecio
+                });
+
+                await authenticate(mockReq as Request, mockRes as Response, mockNext);
+                expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
+                const error = mockNext.mock.calls[0][0];
+                expect(error.statusCode).toBe(403);
+            });
+
+            it("should throw 403 when JWT is valid but Application does not exist", async () => {
+                (mockReq as any).hostname = "unknown.com";
+                mockReq.headers = { authorization: "Bearer validtoken" };
+                (jwt.verify as jest.Mock).mockReturnValue({
+                    sub: "kzn-user-1",
+                    accountType: "USER",
+                    role: UserRole.OWNER,
+                    applicationId: "app-id-1"
+                });
+                (prisma.application.findUnique as jest.Mock).mockResolvedValue(null);
+
+                await authenticate(mockReq as Request, mockRes as Response, mockNext);
+                expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
+                const error = mockNext.mock.calls[0][0];
+                expect(error.statusCode).toBe(403);
+            });
+
+            it("should throw 401 when JWT is invalid or expired", async () => {
+                mockReq.headers = { authorization: "Bearer invalidtoken" };
+                (jwt.verify as jest.Mock).mockImplementation(() => {
+                    throw new Error("JWT error");
+                });
+
+                await authenticate(mockReq as Request, mockRes as Response, mockNext);
+                expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
+                const error = mockNext.mock.calls[0][0];
+                expect(error.statusCode).toBe(401);
+            });
+
+            it("should throw 403 when JWT is valid KZN but Enterprise belongs to Alecio (Cross-Enterprise Hijack)", async () => {
+                mockReq.headers = { authorization: "Bearer validtoken" };
+                (jwt.verify as jest.Mock).mockReturnValue({
+                    sub: "hijacker-user",
+                    accountType: "USER",
+                    role: UserRole.OWNER,
+                    applicationId: "app-id-1" // KZN
+                });
+                (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+                    id: "hijacker-user",
+                    enterpriseId: "alecio-ent-1",
+                    enterprise: { applicationId: "app-id-2" }, // Belongs to Alecio
+                    role: { role: UserRole.OWNER }
+                });
+
+                await authenticate(mockReq as Request, mockRes as Response, mockNext);
+                expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
+                const error = mockNext.mock.calls[0][0];
+                expect(error.statusCode).toBe(403);
+            });
+
+            it("should throw 403 when Enterprise applicationId is null (not yet migrated)", async () => {
+                mockReq.headers = { authorization: "Bearer validtoken" };
+                (jwt.verify as jest.Mock).mockReturnValue({
+                    sub: "legacy-user",
+                    accountType: "USER",
+                    role: UserRole.OWNER,
+                    applicationId: "app-id-1" // KZN
+                });
+                (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+                    id: "legacy-user",
+                    enterpriseId: "legacy-ent-1",
+                    enterprise: { applicationId: null }, // Null
+                    role: { role: UserRole.OWNER }
+                });
+
+                await authenticate(mockReq as Request, mockRes as Response, mockNext);
+                expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
+                const error = mockNext.mock.calls[0][0];
+                expect(error.statusCode).toBe(403);
+            });
         });
     });
 
