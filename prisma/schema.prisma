@@ -24,14 +24,28 @@ enum UserRole {
   ADMIN
 }
 
-model enterprise {
-  id          String   @id @default(uuid()) @db.Uuid
-  name        String
-  email       String
-  phoneNumber String   @map("phone_number")
-  createAt    DateTime @map("create_at")
-  updateAt    DateTime @map("update_at")
+model application {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  domain    String   @unique
+  createAt  DateTime @default(now()) @map("create_at")
+  updateAt  DateTime @updatedAt @map("update_at")
 
+  enterprise enterprise[]
+
+  @@map("application")
+}
+
+model enterprise {
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String
+  email         String
+  phoneNumber   String   @map("phone_number")
+  applicationId String?  @map("application_id") @db.Uuid
+  createAt      DateTime @map("create_at")
+  updateAt      DateTime @map("update_at")
+
+  application                application?                @relation(fields: [applicationId], references: [id])
   user                       user[]
   influencer                 influencer[]
   enterpriseUrl              enterpriseUrl[]

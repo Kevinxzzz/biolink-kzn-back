@@ -23,6 +23,15 @@ jest.mock("../../shared/database/prisma", () => ({
     }
 }));
 
+jest.mock("../../shared/database/redis", () => ({
+    redis: {
+        get: jest.fn(),
+        eval: jest.fn(),
+        incrby: jest.fn(),
+        on: jest.fn(),
+    }
+}));
+
 // Mock the helper function
 jest.spyOn(linkUtils, "getNextEligibleLink");
 

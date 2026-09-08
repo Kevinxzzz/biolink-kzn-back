@@ -1,12 +1,14 @@
 import type { NextFunction, Request, Response } from "express";
 import { loginZod, registerEnterprisePayloadZod } from "../../shared/zod/auth.zod";
-import { loginIn, registerEnterprise } from "./auth.service";
+import { loginIn, registerEnterprise, getAuthenticatedUser } from "./auth.service";
 import { AppError } from "../../shared/errors/appError";
+import { extractDomain } from "../../shared/utils/domain";
 
 export const login = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const parsedData = loginZod.parse(req.body);
-        const result = await loginIn(parsedData);
+        const domain = extractDomain(req);
+        const result = await loginIn(parsedData, domain);
 
         return res.status(200).json(result);
     } catch (error: any) {
@@ -29,7 +31,8 @@ export const registerCompany = async (req: Request, res: Response, next: NextFun
             user: userWithoutConfirmPassword,
         };
 
-        const result = await registerEnterprise(inputData);
+        const domain = extractDomain(req);
+        const result = await registerEnterprise(inputData, domain);
 
         return res.status(201).json(result);
     } catch (error: any) {
@@ -40,3 +43,17 @@ export const registerCompany = async (req: Request, res: Response, next: NextFun
         next(error);
     }
 }
+
+export const getMe = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        if (!req.user) {
+            throw new AppError("Não autenticado.", 401);
+        }
+
+        const result = await getAuthenticatedUser(req.user);
+
+        return res.status(200).json(result);
+    } catch (error: any) {
+        next(error);
+    }
+};

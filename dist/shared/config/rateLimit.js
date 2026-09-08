@@ -10,7 +10,7 @@ const handler = (req, res, next) => {
     next(new appError_1.AppError("Limite de requisições excedido. Tente novamente mais tarde.", 429));
 };
 exports.authLimiter = (0, express_rate_limit_1.default)({
-    windowMs: 60 * 5000,
+    windowMs: 60 * 1000,
     max: 10,
     handler
 });

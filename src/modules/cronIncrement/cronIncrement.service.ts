@@ -15,95 +15,94 @@ const DECR_LUA_SCRIPT = `
 
 export const consolidateClicks = async () => {
     let cursor = "0";
-    const keysToProcess: string[] = [];
 
-    // 1. Varredura no Redis
+    // 1. Varredura no Redis e processamento em lotes (chunks)
     do {
         // MATCH clicks:*:* - as chaves são clicks:enterpriseId:categoryId
         const [nextCursor, keys] = await redis.scan(cursor, "MATCH", "clicks:*:*", "COUNT", "100");
         cursor = nextCursor;
-        keysToProcess.push(...keys);
-    } while (cursor !== "0");
-
-    for (const key of keysToProcess) {
-        try {
-            const parts = key.split(":");
-            if (parts.length !== 3) continue;
-
-            const [, enterpriseId, categoryId] = parts;
-            let compensatedAmount = 0;
-
+        
+        // Processa as chaves recebidas neste lote imediatamente
+        for (const key of keys) {
             try {
-                // 2. Transação no PostgreSQL e Redis combinada
-                await prisma.$transaction(async (tx) => {
-                    // Lock da Categoria
-                    await tx.$executeRaw`SELECT id FROM "enterprise_category" WHERE "id" = ${categoryId}::uuid FOR UPDATE`;
+                const parts = key.split(":");
+                if (parts.length !== 3) continue;
 
-                    // Busca do Link Ativo (autoridade atual da categoria)
-                    const activeLink = await tx.enterpriseUrl.findFirst({
-                        where: { enterpriseId, categoryId, active: true }
-                    });
+                const [, enterpriseId, categoryId] = parts;
+                let compensatedAmount = 0;
 
-                    if (!activeLink) {
-                        return; // Se não houver link ativo, não consolidamos nesta rodada
-                    }
+                try {
+                    // 2. Transação no PostgreSQL e Redis combinada
+                    await prisma.$transaction(async (tx) => {
+                        // Lock da Categoria
+                        await tx.$executeRaw`SELECT id FROM "enterprise_category" WHERE "id" = ${categoryId}::uuid FOR UPDATE`;
 
-                    // Leitura Segura do Redis dentro do Lock
-                    const redisCountStr = await redis.get(key);
-                    const redisCount = redisCountStr ? parseInt(redisCountStr, 10) : 0;
+                        // Busca do Link Ativo (autoridade atual da categoria)
+                        const activeLink = await tx.enterpriseUrl.findFirst({
+                            where: { enterpriseId, categoryId, active: true }
+                        });
 
-                    if (redisCount <= 0) {
-                        return; // Nada a consolidar
-                    }
-
-                    // Incremento no Link
-                    await tx.enterpriseUrl.update({
-                        where: { id: activeLink.id },
-                        data: {
-                            countClicks: { increment: redisCount },
-                            updateAt: new Date()
+                        if (!activeLink) {
+                            return; // Se não houver link ativo, não consolidamos nesta rodada
                         }
-                    });
 
-                    // Atualização Diária (Timezone Seguro BRT)
-                    const referenceDate = getTodayBRTReferenceDate();
+                        // Leitura Segura do Redis dentro do Lock
+                        const redisCountStr = await redis.get(key);
+                        const redisCount = redisCountStr ? parseInt(redisCountStr, 10) : 0;
 
-                    await tx.enterpriseCountDailyClicks.upsert({
-                        where: {
-                            enterpriseId_referenceDate: {
-                                enterpriseId,
-                                referenceDate
+                        if (redisCount <= 0) {
+                            return; // Nada a consolidar
+                        }
+
+                        // Incremento no Link
+                        await tx.enterpriseUrl.update({
+                            where: { id: activeLink.id },
+                            data: {
+                                countClicks: { increment: redisCount },
+                                updateAt: new Date()
                             }
-                        },
-                        create: {
-                            enterpriseId,
-                            referenceDate,
-                            dailyClicks: redisCount,
-                            createAt: new Date(),
-                            updateAt: new Date()
-                        },
-                        update: {
-                            dailyClicks: { increment: redisCount },
-                            updateAt: new Date()
+                        });
+
+                        // Atualização Diária (Timezone Seguro BRT)
+                        const referenceDate = getTodayBRTReferenceDate();
+
+                        await tx.enterpriseCountDailyClicks.upsert({
+                            where: {
+                                enterpriseId_referenceDate: {
+                                    enterpriseId,
+                                    referenceDate
+                                }
+                            },
+                            create: {
+                                enterpriseId,
+                                referenceDate,
+                                dailyClicks: redisCount,
+                                createAt: new Date(),
+                                updateAt: new Date()
+                            },
+                            update: {
+                                dailyClicks: { increment: redisCount },
+                                updateAt: new Date()
+                            }
+                        });
+
+                        // Decremento no Redis (Dentro do Lock do PG)
+                        compensatedAmount = redisCount;
+                        const evalResult = await redis.eval(DECR_LUA_SCRIPT, 1, key, redisCount);
+                        if (evalResult === 0) {
+                            // Se o script não decrementou, não precisamos compensar
+                            compensatedAmount = 0;
                         }
                     });
-
-                    // Decremento no Redis (Dentro do Lock do PG)
-                    compensatedAmount = redisCount;
-                    const evalResult = await redis.eval(DECR_LUA_SCRIPT, 1, key, redisCount);
-                    if (evalResult === 0) {
-                        // Se o script não decrementou, não precisamos compensar
-                        compensatedAmount = 0;
+                } catch (error) {
+                    console.error(`Erro ao consolidar cliques da chave ${key}:`, error);
+                    if (compensatedAmount > 0) {
+                        await redis.incrby(key, compensatedAmount);
                     }
-                });
-            } catch (error) {
-                console.error(`Erro ao consolidar cliques da chave ${key}:`, error);
-                if (compensatedAmount > 0) {
-                    await redis.incrby(key, compensatedAmount);
                 }
+            } catch (outerError) {
+                console.error(`Erro inesperado no processamento da chave ${key}:`, outerError);
             }
-        } catch (outerError) {
-            console.error(`Erro inesperado no processamento da chave ${key}:`, outerError);
         }
-    }
+    } while (cursor !== "0");
 };
