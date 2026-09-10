@@ -33,10 +33,11 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateCategoryRotation = exports.getCategoryRotation = exports.remove = exports.update = exports.getById = exports.list = exports.create = void 0;
+exports.updateCategoryRotation = exports.getCategoryRotation = exports.remove = exports.update = exports.getById = exports.list = exports.listPublic = exports.create = void 0;
 const appError_1 = require("../../shared/errors/appError");
 const category_zod_1 = require("../../shared/zod/category.zod");
 const categoryService = __importStar(require("./category.service"));
+const domain_1 = require("../../shared/utils/domain");
 const create = async (req, res, next) => {
     try {
         const parsedData = category_zod_1.createCategoryZod.parse(req.body);
@@ -53,6 +54,20 @@ const create = async (req, res, next) => {
     }
 };
 exports.create = create;
+const listPublic = async (req, res, next) => {
+    try {
+        const domain = (0, domain_1.extractDomain)(req);
+        if (!domain) {
+            return next(new appError_1.AppError("Domínio não identificado na requisição.", 403));
+        }
+        const result = await categoryService.getPublicCategories(domain);
+        return res.status(200).json({ data: result });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.listPublic = listPublic;
 const list = async (req, res, next) => {
     try {
         const enterpriseId = req.user.enterpriseId;

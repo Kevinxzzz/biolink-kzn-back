@@ -11,6 +11,8 @@ describe("Concurrency Integration Tests", () => {
     let categoryId: string;
     let linkAId: string;
     let linkBId: string;
+    let applicationId: string;
+    let domain = "test.com";
 
     beforeAll(async () => {
         // Clear tables
@@ -19,13 +21,24 @@ describe("Concurrency Integration Tests", () => {
         await prisma.categoryRotation.deleteMany();
         await prisma.enterpriseCategory.deleteMany();
         await prisma.enterprise.deleteMany();
+        await prisma.application.deleteMany();
 
         // Create initial data
+        const app = await prisma.application.create({
+            data: {
+                name: "Test App",
+                domain: domain,
+                createAt: new Date(),
+                updateAt: new Date()
+            }
+        });
+        applicationId = app.id;
         const enterprise = await prisma.enterprise.create({
             data: {
                 name: "Test Enterprise",
                 email: "test-" + Date.now() + "@test.com",
                 phoneNumber: "123456789" + Math.floor(Math.random() * 100),
+                applicationId: applicationId,
                 createAt: new Date(),
                 updateAt: new Date()
             }
@@ -96,7 +109,7 @@ describe("Concurrency Integration Tests", () => {
 
             const promises = [];
             for (let i = 0; i < 2; i++) {
-                promises.push(processClickAndRedirect(enterpriseId, categoryId));
+                promises.push(processClickAndRedirect(domain, categoryId));
             }
             await Promise.all(promises);
 
@@ -119,7 +132,7 @@ describe("Concurrency Integration Tests", () => {
 
             const promises = [];
             for (let i = 0; i < 5; i++) {
-                promises.push(processClickAndRedirect(enterpriseId, categoryId));
+                promises.push(processClickAndRedirect(domain, categoryId));
             }
             promises.push(consolidateClicks());
 

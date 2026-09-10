@@ -6,6 +6,8 @@ import * as categoryController from "./category.controller";
 
 const categoryRoutes = Router();
 
+categoryRoutes.get("/public", categoryController.listPublic);
+
 // Middleware aplicado a todas as rotas do módulo de categorias
 categoryRoutes.use(authenticate);
 categoryRoutes.use(hasRole(UserRole.OWNER, UserRole.ADMIN));

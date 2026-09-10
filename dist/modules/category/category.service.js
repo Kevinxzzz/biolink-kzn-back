@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateCategoryRotationConfig = exports.getCategoryRotationConfig = exports.deleteCategory = exports.updateCategory = exports.getCategoryById = exports.getCategories = exports.createCategory = void 0;
+exports.getPublicCategories = exports.updateCategoryRotationConfig = exports.getCategoryRotationConfig = exports.deleteCategory = exports.updateCategory = exports.getCategoryById = exports.getCategories = exports.createCategory = void 0;
 const prisma_1 = require("../../shared/database/prisma");
 const appError_1 = require("../../shared/errors/appError");
 const categorySelect = {
@@ -141,3 +141,24 @@ const updateCategoryRotationConfig = async (id, enterpriseId, data) => {
     });
 };
 exports.updateCategoryRotationConfig = updateCategoryRotationConfig;
+const getPublicCategories = async (domain) => {
+    const app = await prisma_1.prisma.application.findUnique({ where: { domain } });
+    if (!app) {
+        throw new appError_1.AppError("Aplicação não encontrada para este domínio.", 403);
+    }
+    const categories = await prisma_1.prisma.enterpriseCategory.findMany({
+        where: {
+            enterprise: { applicationId: app.id },
+            enterpriseUrl: {
+                some: { active: true }
+            }
+        },
+        select: {
+            id: true,
+            name: true
+        },
+        orderBy: { name: 'asc' }
+    });
+    return categories;
+};
+exports.getPublicCategories = getPublicCategories;

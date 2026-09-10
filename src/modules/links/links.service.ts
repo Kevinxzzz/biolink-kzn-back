@@ -283,7 +283,22 @@ export const reorderLinks = async (enterpriseId: string, { categoryId, links }: 
     });
 };
 
-export const processClickAndRedirect = async (enterpriseId: string, categoryId: string): Promise<string> => {
+export const processClickAndRedirect = async (domain: string, categoryId: string): Promise<string> => {
+    const app = await prisma.application.findUnique({ where: { domain } });
+    if (!app) {
+        throw new AppError("Aplicação inválida.", 403);
+    }
+
+    const category = await prisma.enterpriseCategory.findFirst({
+        where: { id: categoryId, enterprise: { applicationId: app.id } }
+    });
+
+    if (!category) {
+        throw new AppError("Categoria não encontrada ou não pertence a esta aplicação.", 404);
+    }
+
+    const enterpriseId = category.enterpriseId;
+
     const key = `clicks:${enterpriseId}:${categoryId}`;
     let compensatedAmount = 0;
 

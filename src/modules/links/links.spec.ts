@@ -8,6 +8,9 @@ jest.mock("../../shared/database/prisma", () => ({
     prisma: {
         $transaction: jest.fn(),
         $executeRaw: jest.fn(),
+        application: {
+            findUnique: jest.fn(),
+        },
         enterpriseCategory: {
             findFirst: jest.fn(),
         },
@@ -292,6 +295,8 @@ describe("Links Module", () => {
     describe("Redirecionamento e Rotação", () => {
         beforeEach(() => {
             jest.clearAllMocks();
+            (prisma.application.findUnique as jest.Mock).mockResolvedValue({ id: "app1" });
+            (prisma.enterpriseCategory.findFirst as jest.Mock).mockResolvedValue({ id: "cat1", enterpriseId: "ent1" });
         });
 
         it("deve retornar o link ativo e incrementar no Redis (Fluxo Normal)", async () => {
@@ -299,7 +304,7 @@ describe("Links Module", () => {
             (prisma.categoryRotation.findFirst as jest.Mock).mockResolvedValue({ toggleType: "MANUAL" });
             (redis.get as jest.Mock).mockResolvedValue("5");
 
-            const url = await processClickAndRedirect("ent1", "cat1");
+            const url = await processClickAndRedirect("test.com", "cat1");
 
             expect(url).toBe("http://link1.com");
         });
@@ -319,7 +324,7 @@ describe("Links Module", () => {
                 return { id: "link1" };
             });
 
-            const url = await processClickAndRedirect("ent1", "cat1");
+            const url = await processClickAndRedirect("test.com", "cat1");
 
             expect(mockTx.$executeRaw).toHaveBeenCalled();
             expect(mockTx.enterpriseUrl.update).toHaveBeenCalledWith({
@@ -338,7 +343,7 @@ describe("Links Module", () => {
             (prisma.categoryRotation.findFirst as jest.Mock).mockResolvedValue({ toggleType: "LIMITCLICKS", limitClicks: 1 });
             (redis.eval as jest.Mock).mockResolvedValue(1);
 
-            const url = await processClickAndRedirect("ent1", "cat1");
+            const url = await processClickAndRedirect("test.com", "cat1");
 
             // Não rotacionou
             expect(mockTx.enterpriseUrl.update).not.toHaveBeenCalled();
@@ -361,7 +366,7 @@ describe("Links Module", () => {
                 return { id: "linkA" };
             });
 
-            const url = await processClickAndRedirect("ent1", "cat1");
+            const url = await processClickAndRedirect("test.com", "cat1");
 
             expect(mockTx.enterpriseUrl.update).toHaveBeenCalledWith({
                 where: { id: "linkA" },
@@ -381,7 +386,7 @@ describe("Links Module", () => {
             (prisma.categoryRotation.findFirst as jest.Mock).mockResolvedValue({ toggleType: "LIMITCLICKS", limitClicks: 2 });
             (redis.eval as jest.Mock).mockResolvedValue(2);
 
-            const url = await processClickAndRedirect("ent1", "cat1");
+            const url = await processClickAndRedirect("test.com", "cat1");
 
             expect(mockTx.enterpriseUrl.update).not.toHaveBeenCalled();
             expect(url).toBe("http://linkA.com");
@@ -402,7 +407,7 @@ describe("Links Module", () => {
                 return { id: "linkA" };
             });
 
-            const url = await processClickAndRedirect("ent1", "cat1");
+            const url = await processClickAndRedirect("test.com", "cat1");
 
             expect(mockTx.enterpriseUrl.update).toHaveBeenCalledWith({
                 where: { id: "linkA" },
@@ -420,7 +425,7 @@ describe("Links Module", () => {
             // Double check: agora o link2 está ativo! Alguém já rotacionou.
             mockTx.enterpriseUrl.findFirst.mockResolvedValue({ id: "link2", url: "http://link2.com" });
 
-            const url = await processClickAndRedirect("ent1", "cat1");
+            const url = await processClickAndRedirect("test.com", "cat1");
 
             // Não deve ter update
             expect(mockTx.enterpriseUrl.update).not.toHaveBeenCalled();
@@ -438,7 +443,7 @@ describe("Links Module", () => {
                 { id: "link1", order: 1 } // Apenas ele mesmo
             ]);
 
-            const url = await processClickAndRedirect("ent1", "cat1");
+            const url = await processClickAndRedirect("test.com", "cat1");
 
             expect(mockTx.enterpriseUrl.update).not.toHaveBeenCalled(); // Não alterou nada no BD
             expect(url).toBe("http://link1.com");

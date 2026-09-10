@@ -258,7 +258,18 @@ const reorderLinks = async (enterpriseId, { categoryId, links }) => {
     });
 };
 exports.reorderLinks = reorderLinks;
-const processClickAndRedirect = async (enterpriseId, categoryId) => {
+const processClickAndRedirect = async (domain, categoryId) => {
+    const app = await prisma_1.prisma.application.findUnique({ where: { domain } });
+    if (!app) {
+        throw new appError_1.AppError("Aplicação inválida.", 403);
+    }
+    const category = await prisma_1.prisma.enterpriseCategory.findFirst({
+        where: { id: categoryId, enterprise: { applicationId: app.id } }
+    });
+    if (!category) {
+        throw new appError_1.AppError("Categoria não encontrada ou não pertence a esta aplicação.", 404);
+    }
+    const enterpriseId = category.enterpriseId;
     const key = `clicks:${enterpriseId}:${categoryId}`;
     let compensatedAmount = 0;
     const link = await prisma_1.prisma.enterpriseUrl.findFirst({
