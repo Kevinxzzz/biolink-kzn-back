@@ -20,7 +20,12 @@ const loginIn = async ({ email, password }, requestDomain) => {
         throw new appError_1.AppError("Aplicação não encontrada ou não autorizada.", 403);
     }
     const user = await prisma_1.prisma.user.findFirst({
-        where: { email: email },
+        where: {
+            email: email,
+            enterprise: {
+                applicationId: application.id
+            }
+        },
         select: {
             id: true,
             name: true,

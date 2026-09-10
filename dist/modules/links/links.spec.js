@@ -67,18 +67,43 @@ describe("Links Module", () => {
     });
     describe("CRUD", () => {
         it("deve criar um link e incrementar a ordem", async () => {
-            mockTx.enterpriseCategory.findFirst.mockResolvedValue({ id: "cat1", name: "efootball" });
+            const categoryId = "11111111-1111-1111-1111-111111111111";
+            mockTx.enterpriseCategory.findFirst.mockResolvedValue({ id: categoryId, name: "efootball", enterpriseId: "ent1" });
             mockTx.enterpriseUrl.findFirst.mockResolvedValue({ order: 5 });
             mockTx.enterpriseUrl.create.mockResolvedValue({ id: "link1", order: 6 });
-            const result = await (0, links_service_1.createLink)("ent1", { title: "Test", url: "http://test.com" });
+            const result = await (0, links_service_1.createLink)("ent1", { title: "Test", url: "http://test.com", categoryId });
             expect(mockTx.enterpriseCategory.findFirst).toHaveBeenCalledWith({
-                where: { name: "efootball" }
+                where: { id: categoryId, enterpriseId: "ent1" }
+            });
+            expect(mockTx.enterpriseUrl.findFirst).toHaveBeenCalledWith({
+                where: { enterpriseId: "ent1", categoryId },
+                orderBy: { order: "desc" }
             });
             expect(mockTx.enterpriseUrl.create).toHaveBeenCalledWith({
-                data: expect.objectContaining({ order: 6, enterpriseId: "ent1", categoryId: "cat1", countClicks: 0, active: false }),
+                data: expect.objectContaining({ order: 6, enterpriseId: "ent1", categoryId, countClicks: 0, active: false }),
                 select: expect.any(Object)
             });
             expect(result.order).toBe(6);
+        });
+        it("deve definir ordem como 1 quando for o primeiro link da categoria", async () => {
+            const categoryId = "11111111-1111-1111-1111-111111111111";
+            mockTx.enterpriseCategory.findFirst.mockResolvedValue({ id: categoryId, enterpriseId: "ent1" });
+            mockTx.enterpriseUrl.findFirst.mockResolvedValue(null);
+            mockTx.enterpriseUrl.create.mockResolvedValue({ id: "link1", order: 1 });
+            const result = await (0, links_service_1.createLink)("ent1", { title: "Test", url: "http://test.com", categoryId });
+            expect(mockTx.enterpriseUrl.create).toHaveBeenCalledWith({
+                data: expect.objectContaining({ order: 1, enterpriseId: "ent1", categoryId }),
+                select: expect.any(Object)
+            });
+            expect(result.order).toBe(1);
+        });
+        it("deve lançar erro 404 se a categoria não existir ou pertencer a outra empresa", async () => {
+            const categoryId = "11111111-1111-1111-1111-111111111111";
+            mockTx.enterpriseCategory.findFirst.mockResolvedValue(null);
+            await expect((0, links_service_1.createLink)("ent1", { title: "Test", url: "http://test.com", categoryId })).rejects.toMatchObject({
+                statusCode: 404,
+                message: "Categoria não encontrada ou não pertence a esta empresa"
+            });
         });
         it("deve listar links com enterpriseId correto", async () => {
             prisma_1.prisma.enterpriseUrl.findMany.mockResolvedValue([{ id: "link1", active: false, countClicks: 0 }]);
@@ -156,6 +181,23 @@ describe("Links Module", () => {
             expect(mockTx.enterpriseCountDailyClicks.upsert).toHaveBeenCalled();
             expect(redis_1.redis.eval).toHaveBeenCalled();
             expect(result.id).toBe("link1");
+        });
+        it("deve isolar a busca do link ativo apenas para a mesma categoria (findFirst verifica categoryId)", async () => {
+            prisma_1.prisma.enterpriseUrl.findFirst.mockResolvedValueOnce({ id: "linkA", categoryId: "catA", enterpriseId: "ent1", inRotationPool: true });
+            mockTx.enterpriseUrl.findFirst.mockResolvedValueOnce(null); // Nenhum ativo na catA
+            mockTx.enterpriseUrl.update.mockResolvedValueOnce({ id: "linkA", active: true, countClicks: 0 });
+            await (0, links_service_1.activateLink)("linkA", "ent1");
+            // Valida se o findFirst foi restrito à categoryId correta (catA)
+            expect(mockTx.enterpriseUrl.findFirst).toHaveBeenCalledWith({
+                where: { enterpriseId: "ent1", categoryId: "catA", active: true }
+            });
+            // Como retornou nulo (nenhum ativo em catA), não há desativação, apenas a ativação de linkA
+            expect(mockTx.enterpriseUrl.update).toHaveBeenCalledTimes(1);
+            expect(mockTx.enterpriseUrl.update).toHaveBeenCalledWith({
+                where: { id: "linkA" },
+                data: expect.objectContaining({ active: true }),
+                select: expect.any(Object)
+            });
         });
         it("não permite ativar link inexistente ou de outra empresa", async () => {
             prisma_1.prisma.enterpriseUrl.findFirst.mockResolvedValue(null);

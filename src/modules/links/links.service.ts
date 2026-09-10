@@ -45,51 +45,49 @@ const linkSelect = {
 };
 
 export const createLink = async (enterpriseId: string, data: CreateLinkInput) => {
-    return await prisma.$transaction(async (tx) => {
-        // Bloqueio no nível da empresa para garantir concorrência segura na ordem
-        await tx.$executeRaw`SELECT id FROM "enterprise" WHERE "id" = ${enterpriseId}::uuid FOR UPDATE`;
-        const tempForceCategory = await tx.enterpriseCategory.findFirst({
-            where: {
-                name: "efootball"
+    try {
+        return await prisma.$transaction(async (tx) => {
+            // Bloqueio no nível da empresa para garantir concorrência segura na ordem
+            await tx.$executeRaw`SELECT id FROM "enterprise" WHERE "id" = ${enterpriseId}::uuid FOR UPDATE`;
+
+            const categoryExists = await tx.enterpriseCategory.findFirst({
+                where: { id: data.categoryId, enterpriseId }
+            });
+
+            if (!categoryExists) {
+                throw new AppError("Categoria não encontrada ou não pertence a esta empresa", 404);
             }
-        });
 
-        if (!tempForceCategory) {
-            throw new AppError("Categoria 'efootball' não encontrada", 404);
+
+            const maxOrderUrl = await tx.enterpriseUrl.findFirst({
+                where: { enterpriseId, categoryId: data.categoryId },
+                orderBy: { order: 'desc' }
+            });
+
+            const newOrder = maxOrderUrl ? maxOrderUrl.order + 1 : 1;
+
+            return await tx.enterpriseUrl.create({
+                data: {
+                    title: data.title,
+                    url: data.url,
+                    order: newOrder,
+                    active: false,
+                    countClicks: 0,
+                    inRotationPool: true,
+                    enterpriseId,
+                    categoryId: data.categoryId,
+                    createAt: new Date(),
+                    updateAt: new Date()
+                },
+                select: linkSelect
+            });
+        });
+    } catch (error: any) {
+        if (error.code === 'P2002') {
+            throw new AppError("Esta URL já está cadastrada.", 400);
         }
-        /*const categoryExists = await tx.enterpriseCategory.findFirst({
-            where: { id: data.categoryId, enterpriseId }
-        });
-
-        if (!categoryExists) {
-            throw new AppError("Categoria não encontrada ou não pertence a esta empresa", 404);
-        }*/
-
-
-        const maxOrderUrl = await tx.enterpriseUrl.findFirst({
-            where: { enterpriseId, categoryId: tempForceCategory.id },
-            orderBy: { order: 'desc' }
-        });
-
-        const newOrder = maxOrderUrl ? maxOrderUrl.order + 1 : 1;
-
-        return await tx.enterpriseUrl.create({
-            data: {
-                title: data.title,
-                url: data.url,
-                order: newOrder,
-                active: false,
-                countClicks: 0,
-                inRotationPool: true,
-                enterpriseId,
-                //categoryId: data.categoryId,
-                categoryId: tempForceCategory.id,
-                createAt: new Date(),
-                updateAt: new Date()
-            },
-            select: linkSelect
-        });
-    });
+        throw error;
+    }
 };
 
 export const getLinks = async (enterpriseId: string, categoryId?: string) => {
@@ -127,19 +125,26 @@ export const getLinkById = async (id: string, enterpriseId: string) => {
 };
 
 export const updateLink = async (id: string, enterpriseId: string, data: UpdateLinkInput) => {
-    const link = await prisma.enterpriseUrl.findFirst({
-        where: { id, enterpriseId }
-    });
-    if (!link) throw new AppError("Link não encontrado ou acesso negado", 404);
+    try {
+        const link = await prisma.enterpriseUrl.findFirst({
+            where: { id, enterpriseId }
+        });
+        if (!link) throw new AppError("Link não encontrado ou acesso negado", 404);
 
-    return await prisma.enterpriseUrl.update({
-        where: { id },
-        data: {
-            ...data,
-            updateAt: new Date()
-        },
-        select: linkSelect
-    });
+        return await prisma.enterpriseUrl.update({
+            where: { id },
+            data: {
+                ...data,
+                updateAt: new Date()
+            },
+            select: linkSelect
+        });
+    } catch (error: any) {
+        if (error.code === 'P2002') {
+            throw new AppError("Esta URL já está cadastrada.", 400);
+        }
+        throw error;
+    }
 };
 
 export const deleteLink = async (id: string, enterpriseId: string) => {
@@ -334,7 +339,7 @@ export const processClickAndRedirect = async (domain: string, categoryId: string
         try {
             const result = await prisma.$transaction(async (tx) => {
                 await tx.$executeRaw`SELECT id FROM "enterprise_category" WHERE "id" = ${categoryId}::uuid FOR UPDATE`;
-                
+
                 const currentActive = await tx.enterpriseUrl.findFirst({
                     where: { enterpriseId, categoryId, active: true }
                 });
@@ -354,14 +359,14 @@ export const processClickAndRedirect = async (domain: string, categoryId: string
                             where: { id: link.id },
                             data: { countClicks: { increment: pending }, updateAt: new Date() }
                         });
-                        
+
                         const referenceDate = getTodayBRTReferenceDate();
                         await tx.enterpriseCountDailyClicks.upsert({
                             where: { enterpriseId_referenceDate: { enterpriseId, referenceDate } },
                             create: { enterpriseId, referenceDate, dailyClicks: pending, createAt: new Date(), updateAt: new Date() },
                             update: { dailyClicks: { increment: pending }, updateAt: new Date() }
                         });
-                        
+
                         compensatedAmount = pending;
                         const evalResult = await redis.eval(DECR_LUA_SCRIPT, 1, key, pending);
                         if (evalResult === 0) compensatedAmount = 0;
@@ -370,12 +375,12 @@ export const processClickAndRedirect = async (domain: string, categoryId: string
                 }
 
                 const actualClicksRegistered = link.countClicks + pending;
-                
+
                 await tx.enterpriseUrl.update({
                     where: { id: link.id },
                     data: { active: false, countClicks: actualClicksRegistered, updateAt: new Date() }
                 });
-                
+
                 if (pending > 0) {
                     const referenceDate = getTodayBRTReferenceDate();
                     await tx.enterpriseCountDailyClicks.upsert({
@@ -383,7 +388,7 @@ export const processClickAndRedirect = async (domain: string, categoryId: string
                         create: { enterpriseId, referenceDate, dailyClicks: pending, createAt: new Date(), updateAt: new Date() },
                         update: { dailyClicks: { increment: pending }, updateAt: new Date() }
                     });
-                    
+
                     compensatedAmount = pending;
                     const evalResult = await redis.eval(DECR_LUA_SCRIPT, 1, key, pending);
                     if (evalResult === 0) compensatedAmount = 0;
@@ -412,7 +417,7 @@ export const processClickAndRedirect = async (domain: string, categoryId: string
 
     // Fluxo Normal (MANUAL, TIMER, SCHEDULE)
     await redis.incr(key);
-    
+
     return link.url;
 };
 
