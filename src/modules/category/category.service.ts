@@ -145,3 +145,26 @@ export const updateCategoryRotationConfig = async (id: string, enterpriseId: str
         });
     });
 };
+
+export const getPublicCategories = async (domain: string) => {
+    const app = await prisma.application.findUnique({ where: { domain } });
+    if (!app) {
+        throw new AppError("Aplicação não encontrada para este domínio.", 403);
+    }
+
+    const categories = await prisma.enterpriseCategory.findMany({
+        where: {
+            enterprise: { applicationId: app.id },
+            enterpriseUrl: {
+                some: { active: true }
+            }
+        },
+        select: {
+            id: true,
+            name: true
+        },
+        orderBy: { name: 'asc' }
+    });
+
+    return categories;
+};

@@ -15,9 +15,9 @@ async function main() {
 
     // Seed Applications (KZN, ALECIO)
     const applications = [
-        { name: "KZN", domain: env.KZN_URL! },
-        { name: "ALECIO", domain: env.ALECIO_URL! },
-        { name: "IMPERIO", domain: env.IMPERIO_URL! }
+        { name: "KZNStage", domain: env.KZN_URL! },
+        { name: "ALECIOStage", domain: env.ALECIO_URL! },
+        { name: "IMPERIOStage", domain: env.IMPERIO_URL! }
     ];
 
     for (const app of applications) {

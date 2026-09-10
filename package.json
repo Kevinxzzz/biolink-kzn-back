@@ -11,7 +11,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:seed": "prisma db seed",
-    "test": "jest"
+    "prisma:seedStage": "tsx prisma/seedStage.ts",
+    "test": "npm run build && jest --runInBand"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

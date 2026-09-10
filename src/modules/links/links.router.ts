@@ -10,7 +10,7 @@ const linksRoutes = Router();
 linksRoutes.get("/redirect/kzngg/efootball", linksController.redirectOnlyEfootballFromKzn);
 
 // Rota pública para redirecionamento e contabilização de cliques
-linksRoutes.get("/redirect/:enterpriseId/:categoryId", linksController.redirect);
+linksRoutes.get("/redirect/:categoryId", linksController.redirect);
 
 
 // Middleware aplicado a todas as rotas do módulo de links (autenticadas)

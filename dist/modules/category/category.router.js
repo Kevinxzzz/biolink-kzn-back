@@ -41,6 +41,7 @@ const hasRole_1 = require("../../shared/middlewares/hasRole");
 const categoryController = __importStar(require("./category.controller"));
 const categoryRoutes = (0, express_1.Router)();
 exports.categoryRoutes = categoryRoutes;
+categoryRoutes.get("/public", categoryController.listPublic);
 // Middleware aplicado a todas as rotas do módulo de categorias
 categoryRoutes.use(authenticate_1.authenticate);
 categoryRoutes.use((0, hasRole_1.hasRole)(client_1.UserRole.OWNER, client_1.UserRole.ADMIN));
