@@ -42,46 +42,44 @@ const linkSelect = {
     categoryId: true,
 };
 const createLink = async (enterpriseId, data) => {
-    return await prisma_1.prisma.$transaction(async (tx) => {
-        // Bloqueio no nível da empresa para garantir concorrência segura na ordem
-        await tx.$executeRaw `SELECT id FROM "enterprise" WHERE "id" = ${enterpriseId}::uuid FOR UPDATE`;
-        const tempForceCategory = await tx.enterpriseCategory.findFirst({
-            where: {
-                name: "efootball"
+    try {
+        return await prisma_1.prisma.$transaction(async (tx) => {
+            // Bloqueio no nível da empresa para garantir concorrência segura na ordem
+            await tx.$executeRaw `SELECT id FROM "enterprise" WHERE "id" = ${enterpriseId}::uuid FOR UPDATE`;
+            const categoryExists = await tx.enterpriseCategory.findFirst({
+                where: { id: data.categoryId, enterpriseId }
+            });
+            if (!categoryExists) {
+                throw new appError_1.AppError("Categoria não encontrada ou não pertence a esta empresa", 404);
             }
+            const maxOrderUrl = await tx.enterpriseUrl.findFirst({
+                where: { enterpriseId, categoryId: data.categoryId },
+                orderBy: { order: 'desc' }
+            });
+            const newOrder = maxOrderUrl ? maxOrderUrl.order + 1 : 1;
+            return await tx.enterpriseUrl.create({
+                data: {
+                    title: data.title,
+                    url: data.url,
+                    order: newOrder,
+                    active: false,
+                    countClicks: 0,
+                    inRotationPool: true,
+                    enterpriseId,
+                    categoryId: data.categoryId,
+                    createAt: new Date(),
+                    updateAt: new Date()
+                },
+                select: linkSelect
+            });
         });
-        if (!tempForceCategory) {
-            throw new appError_1.AppError("Categoria 'efootball' não encontrada", 404);
+    }
+    catch (error) {
+        if (error.code === 'P2002') {
+            throw new appError_1.AppError("Esta URL já está cadastrada.", 400);
         }
-        /*const categoryExists = await tx.enterpriseCategory.findFirst({
-            where: { id: data.categoryId, enterpriseId }
-        });
-
-        if (!categoryExists) {
-            throw new AppError("Categoria não encontrada ou não pertence a esta empresa", 404);
-        }*/
-        const maxOrderUrl = await tx.enterpriseUrl.findFirst({
-            where: { enterpriseId, categoryId: tempForceCategory.id },
-            orderBy: { order: 'desc' }
-        });
-        const newOrder = maxOrderUrl ? maxOrderUrl.order + 1 : 1;
-        return await tx.enterpriseUrl.create({
-            data: {
-                title: data.title,
-                url: data.url,
-                order: newOrder,
-                active: false,
-                countClicks: 0,
-                inRotationPool: true,
-                enterpriseId,
-                //categoryId: data.categoryId,
-                categoryId: tempForceCategory.id,
-                createAt: new Date(),
-                updateAt: new Date()
-            },
-            select: linkSelect
-        });
-    });
+        throw error;
+    }
 };
 exports.createLink = createLink;
 const getLinks = async (enterpriseId, categoryId) => {
@@ -115,19 +113,27 @@ const getLinkById = async (id, enterpriseId) => {
 };
 exports.getLinkById = getLinkById;
 const updateLink = async (id, enterpriseId, data) => {
-    const link = await prisma_1.prisma.enterpriseUrl.findFirst({
-        where: { id, enterpriseId }
-    });
-    if (!link)
-        throw new appError_1.AppError("Link não encontrado ou acesso negado", 404);
-    return await prisma_1.prisma.enterpriseUrl.update({
-        where: { id },
-        data: {
-            ...data,
-            updateAt: new Date()
-        },
-        select: linkSelect
-    });
+    try {
+        const link = await prisma_1.prisma.enterpriseUrl.findFirst({
+            where: { id, enterpriseId }
+        });
+        if (!link)
+            throw new appError_1.AppError("Link não encontrado ou acesso negado", 404);
+        return await prisma_1.prisma.enterpriseUrl.update({
+            where: { id },
+            data: {
+                ...data,
+                updateAt: new Date()
+            },
+            select: linkSelect
+        });
+    }
+    catch (error) {
+        if (error.code === 'P2002') {
+            throw new appError_1.AppError("Esta URL já está cadastrada.", 400);
+        }
+        throw error;
+    }
 };
 exports.updateLink = updateLink;
 const deleteLink = async (id, enterpriseId) => {
@@ -258,7 +264,18 @@ const reorderLinks = async (enterpriseId, { categoryId, links }) => {
     });
 };
 exports.reorderLinks = reorderLinks;
-const processClickAndRedirect = async (enterpriseId, categoryId) => {
+const processClickAndRedirect = async (domain, categoryId) => {
+    const app = await prisma_1.prisma.application.findUnique({ where: { domain } });
+    if (!app) {
+        throw new appError_1.AppError("Aplicação inválida.", 403);
+    }
+    const category = await prisma_1.prisma.enterpriseCategory.findFirst({
+        where: { id: categoryId, enterprise: { applicationId: app.id } }
+    });
+    if (!category) {
+        throw new appError_1.AppError("Categoria não encontrada ou não pertence a esta aplicação.", 404);
+    }
+    const enterpriseId = category.enterpriseId;
     const key = `clicks:${enterpriseId}:${categoryId}`;
     let compensatedAmount = 0;
     const link = await prisma_1.prisma.enterpriseUrl.findFirst({

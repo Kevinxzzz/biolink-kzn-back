@@ -2,6 +2,7 @@ import { PrismaClient, UserRole, Platform } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import pg from "pg";
 import { env } from "../src/shared/config/env";
+import { normalizeDomain } from "../src/shared/utils/domain";
 
 const pool = new pg.Pool({
     connectionString: env.DATABASE_URL,
@@ -20,15 +21,16 @@ async function main() {
     ];
 
     for (const app of applications) {
+        const normalizedDomain = normalizeDomain(app.domain);
         await prisma.application.upsert({
-            where: { domain: app.domain },
+            where: { domain: normalizedDomain },
             update: { name: app.name },
             create: {
                 name: app.name,
-                domain: app.domain
+                domain: normalizedDomain
             }
         });
-        console.log(`Application '${app.name}' ensured with domain '${app.domain}'.`);
+        console.log(`Application '${app.name}' ensured with domain '${normalizedDomain}'.`);
     }
 
     // Seed Roles (OWNER, ADMIN)

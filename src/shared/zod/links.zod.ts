@@ -3,12 +3,13 @@ import { z } from "zod";
 export const createLinkZod = z.object({
     title: z.string().trim().min(1, "O título é obrigatório").max(100, "O título deve ter no máximo 100 caracteres"),
     url: z.string().trim().url("A URL deve ser válida").max(500, "A URL deve ter no máximo 500 caracteres"),
-    //categoryId: z.string().uuid("O ID da categoria deve ser um UUID válido"),
+    categoryId: z.string().uuid("O ID da categoria deve ser um UUID válido"),
 });
 
 export const updateLinkZod = z.object({
     title: z.string().trim().min(1, "O título não pode ser vazio").max(100, "O título deve ter no máximo 100 caracteres").optional(),
     url: z.string().trim().url("A URL deve ser válida").max(500, "A URL deve ter no máximo 500 caracteres").optional(),
+    categoryId: z.string().uuid("O ID da categoria deve ser um UUID válido").optional(),
 }).strict();
 
 export const reorderLinksZod = z.object({

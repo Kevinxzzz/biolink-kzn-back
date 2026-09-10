@@ -10,6 +10,8 @@ describe("Concurrency Integration Tests", () => {
     let categoryId;
     let linkAId;
     let linkBId;
+    let applicationId;
+    let domain = "test.com";
     beforeAll(async () => {
         // Clear tables
         await prisma_1.prisma.enterpriseUrl.deleteMany();
@@ -17,12 +19,23 @@ describe("Concurrency Integration Tests", () => {
         await prisma_1.prisma.categoryRotation.deleteMany();
         await prisma_1.prisma.enterpriseCategory.deleteMany();
         await prisma_1.prisma.enterprise.deleteMany();
+        await prisma_1.prisma.application.deleteMany();
         // Create initial data
+        const app = await prisma_1.prisma.application.create({
+            data: {
+                name: "Test App",
+                domain: domain,
+                createAt: new Date(),
+                updateAt: new Date()
+            }
+        });
+        applicationId = app.id;
         const enterprise = await prisma_1.prisma.enterprise.create({
             data: {
                 name: "Test Enterprise",
                 email: "test-" + Date.now() + "@test.com",
                 phoneNumber: "123456789" + Math.floor(Math.random() * 100),
+                applicationId: applicationId,
                 createAt: new Date(),
                 updateAt: new Date()
             }
@@ -84,7 +97,7 @@ describe("Concurrency Integration Tests", () => {
             await redis_1.redis.set(key, 49);
             const promises = [];
             for (let i = 0; i < 2; i++) {
-                promises.push((0, links_service_1.processClickAndRedirect)(enterpriseId, categoryId));
+                promises.push((0, links_service_1.processClickAndRedirect)(domain, categoryId));
             }
             await Promise.all(promises);
             const finalLinkA = await prisma_1.prisma.enterpriseUrl.findUnique({ where: { id: linkAId } });
@@ -103,7 +116,7 @@ describe("Concurrency Integration Tests", () => {
             await redis_1.redis.set(key, 10);
             const promises = [];
             for (let i = 0; i < 5; i++) {
-                promises.push((0, links_service_1.processClickAndRedirect)(enterpriseId, categoryId));
+                promises.push((0, links_service_1.processClickAndRedirect)(domain, categoryId));
             }
             promises.push((0, cronIncrement_service_1.consolidateClicks)());
             await Promise.all(promises);

@@ -20,7 +20,13 @@ export const loginIn = async ({ email, password }: LoginInput, requestDomain?: s
     }
 
     const user = await prisma.user.findFirst({
-        where: { email: email },
+        where: {
+            email: email,
+            enterprise: {
+                applicationId: application.id
+            }
+
+        },
         select: {
             id: true,
             name: true,
