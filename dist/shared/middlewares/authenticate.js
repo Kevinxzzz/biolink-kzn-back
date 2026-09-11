@@ -8,9 +8,10 @@ const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const env_1 = require("../config/env");
 const prisma_1 = require("../database/prisma");
 const appError_1 = require("../errors/appError");
+const domain_1 = require("../utils/domain");
 const authenticate = async (req, res, next) => {
     try {
-        const authHeader = req.headers.authorization;
+        const authHeader = req.headers?.authorization;
         if (!authHeader) {
             throw new appError_1.AppError("Token não fornecido", 401);
         }
@@ -30,6 +31,19 @@ const authenticate = async (req, res, next) => {
         if (payload.accountType !== "USER" && payload.accountType !== "INFLUENCER") {
             throw new appError_1.AppError("Token inválido", 401);
         }
+        const requestDomain = (0, domain_1.extractDomain)(req);
+        if (!requestDomain) {
+            throw new appError_1.AppError("Aplicação não identificada.", 403);
+        }
+        let currentApp = await prisma_1.prisma.application.findUnique({
+            where: { domain: requestDomain }
+        });
+        if (!currentApp) {
+            throw new appError_1.AppError("Aplicação não encontrada ou não autorizada.", 403);
+        }
+        if (!payload.applicationId || payload.applicationId !== currentApp.id) {
+            throw new appError_1.AppError("Acesso não permitido para esta aplicação.", 403);
+        }
         let userRecord = null;
         if (payload.accountType === "USER") {
             const user = await prisma_1.prisma.user.findUnique({
@@ -38,6 +52,11 @@ const authenticate = async (req, res, next) => {
                     id: true,
                     email: true,
                     enterpriseId: true,
+                    enterprise: {
+                        select: {
+                            applicationId: true
+                        }
+                    },
                     role: {
                         select: {
                             role: true
@@ -46,10 +65,14 @@ const authenticate = async (req, res, next) => {
                 }
             });
             if (user) {
+                if (!user.enterprise?.applicationId || user.enterprise.applicationId !== currentApp.id) {
+                    throw new appError_1.AppError("Acesso não permitido para esta aplicação.", 403);
+                }
                 userRecord = {
                     id: user.id,
                     email: user.email,
                     enterpriseId: user.enterpriseId,
+                    applicationId: user.enterprise.applicationId,
                     accountType: "USER",
                     role: user.role.role
                 };
@@ -58,13 +81,26 @@ const authenticate = async (req, res, next) => {
         else if (payload.accountType === "INFLUENCER") {
             const influencer = await prisma_1.prisma.influencer.findUnique({
                 where: { id: payload.sub },
-                select: { id: true, email: true, enterpriseId: true }
+                select: {
+                    id: true,
+                    email: true,
+                    enterpriseId: true,
+                    enterprise: {
+                        select: {
+                            applicationId: true
+                        }
+                    }
+                }
             });
             if (influencer) {
+                if (!influencer.enterprise?.applicationId || influencer.enterprise.applicationId !== currentApp.id) {
+                    throw new appError_1.AppError("Acesso não permitido para esta aplicação.", 403);
+                }
                 userRecord = {
                     id: influencer.id,
                     email: influencer.email,
                     enterpriseId: influencer.enterpriseId,
+                    applicationId: influencer.enterprise.applicationId,
                     accountType: "INFLUENCER"
                 };
             }

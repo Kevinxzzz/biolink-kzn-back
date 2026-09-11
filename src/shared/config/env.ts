@@ -7,8 +7,12 @@ const envSchema = z.object({
     DATABASE_URL: z.string().default("postgresql://postgres:postgres@localhost:5432/biolink?schema=public"),
     REDIS_URL: z.string().default("redis://localhost:6379"),
     JWT_SECRET: z.string().min(10, "JWT_SECRET deve ter ao menos 10 caracteres").default("default-jwt-secret-key-for-dev-and-test"),
-    FRONTEND_URL: z.string().optional(),
-    FRONTEND_URL_LOCAL: z.string().optional(),
+    KZN_URL: z.string(),
+    ALECIO_URL: z.string(),
+    IMPERIO_URL: z.string(),
+    KZN_URL_STAGE: z.string().optional(),
+    ALECIO_URL_STAGE: z.string().optional(),
+    IMPERIO_URL_STAGE: z.string().optional(),
     TRUST_PROXY: z.string().optional(),
     ENTERPRISE_ID_KZN: z.string()
 });

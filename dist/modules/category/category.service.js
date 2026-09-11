@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateCategoryRotationConfig = exports.getCategoryRotationConfig = exports.deleteCategory = exports.updateCategory = exports.getCategoryById = exports.getCategories = exports.createCategory = void 0;
+exports.getPublicCategories = exports.getRotationType = exports.updateAllCategoriesRotationConfig = exports.updateCategoryRotationConfig = exports.getCategoryRotationConfig = exports.deleteCategory = exports.updateCategory = exports.getCategoryById = exports.getCategories = exports.createCategory = void 0;
 const prisma_1 = require("../../shared/database/prisma");
 const appError_1 = require("../../shared/errors/appError");
 const categorySelect = {
@@ -21,9 +21,27 @@ const createCategory = async (enterpriseId, data) => {
                 },
                 select: categorySelect
             });
+            const existingRotation = await tx.categoryRotation.findFirst({
+                where: {
+                    enterpriseCategory: {
+                        enterpriseId
+                    },
+                    categoryId: {
+                        not: newCategory.id
+                    },
+                    toggleType: {
+                        not: "MANUAL"
+                    }
+                },
+                select: {
+                    toggleType: true
+                }
+            });
+            const toggleType = existingRotation ? existingRotation.toggleType : "MANUAL";
             await tx.categoryRotation.create({
                 data: {
                     categoryId: newCategory.id,
+                    toggleType,
                     updateAt: new Date()
                 }
             });
@@ -141,3 +159,85 @@ const updateCategoryRotationConfig = async (id, enterpriseId, data) => {
     });
 };
 exports.updateCategoryRotationConfig = updateCategoryRotationConfig;
+const updateAllCategoriesRotationConfig = async (enterpriseId, data) => {
+    return await prisma_1.prisma.$transaction(async (tx) => {
+        const categories = await tx.$queryRaw `
+            SELECT id FROM "enterprise_category" 
+            WHERE "enterprise_id" = ${enterpriseId}::uuid 
+            FOR UPDATE
+        `;
+        if (!categories || categories.length === 0) {
+            return { count: 0 };
+        }
+        const categoryIds = categories.map(c => c.id);
+        let limitClicks = null;
+        let timerInMinutes = null;
+        let timerStartedAt = null;
+        if (data.toggleType === "LIMITCLICKS") {
+            limitClicks = data.limitClicks ?? null;
+        }
+        else if (data.toggleType === "TIMER") {
+            timerInMinutes = data.timerInMinutes ?? null;
+            timerStartedAt = new Date();
+        }
+        const result = await tx.categoryRotation.updateMany({
+            where: { categoryId: { in: categoryIds } },
+            data: {
+                toggleType: data.toggleType,
+                limitClicks,
+                timerInMinutes,
+                timerStartedAt,
+                updateAt: new Date()
+            }
+        });
+        return { count: result.count };
+    });
+};
+exports.updateAllCategoriesRotationConfig = updateAllCategoriesRotationConfig;
+const getRotationType = async (enterpriseId) => {
+    const rotation = await prisma_1.prisma.categoryRotation.findFirst({
+        where: enterpriseId ? {
+            enterpriseCategory: { enterpriseId }
+        } : undefined,
+        select: {
+            toggleType: true,
+            limitClicks: true,
+            timerInMinutes: true,
+            timerStartedAt: true
+        }
+    });
+    if (rotation) {
+        return rotation;
+    }
+    const anyRotation = await prisma_1.prisma.categoryRotation.findFirst({
+        select: {
+            toggleType: true,
+            limitClicks: true,
+            timerInMinutes: true,
+            timerStartedAt: true
+        }
+    });
+    return anyRotation;
+};
+exports.getRotationType = getRotationType;
+const getPublicCategories = async (domain) => {
+    const app = await prisma_1.prisma.application.findUnique({ where: { domain } });
+    if (!app) {
+        throw new appError_1.AppError("Aplicação não encontrada para este domínio.", 403);
+    }
+    const categories = await prisma_1.prisma.enterpriseCategory.findMany({
+        where: {
+            enterprise: { applicationId: app.id },
+            enterpriseUrl: {
+                some: { active: true }
+            }
+        },
+        select: {
+            id: true,
+            name: true
+        },
+        orderBy: { name: 'asc' }
+    });
+    return categories;
+};
+exports.getPublicCategories = getPublicCategories;

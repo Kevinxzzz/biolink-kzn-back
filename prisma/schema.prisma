@@ -24,22 +24,34 @@ enum UserRole {
   ADMIN
 }
 
-model enterprise {
-  id          String   @id @default(uuid()) @db.Uuid
-  name        String
-  email       String
-  phoneNumber String   @map("phone_number")
-  createAt    DateTime @map("create_at")
-  updateAt    DateTime @map("update_at")
+model application {
+  id       String   @id @default(uuid()) @db.Uuid
+  name     String
+  domain   String   @unique
+  createAt DateTime @default(now()) @map("create_at")
+  updateAt DateTime @updatedAt @map("update_at")
 
+  enterprise enterprise?
+
+  @@map("application")
+}
+
+model enterprise {
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String
+  email         String   @unique
+  phoneNumber   String   @unique @map("phone_number")
+  applicationId String?  @unique @map("application_id") @db.Uuid
+  createAt      DateTime @map("create_at")
+  updateAt      DateTime @map("update_at")
+
+  application                application?                 @relation(fields: [applicationId], references: [id])
   user                       user[]
   influencer                 influencer[]
   enterpriseUrl              enterpriseUrl[]
   enterpriseCategory         enterpriseCategory[]
   enterpriseCountDailyClicks enterpriseCountDailyClicks[]
   enterpriseTokenInvites     enterpriseTokenInvite[]
-
-  @@unique([email, phoneNumber])
 }
 
 model enterpriseTokenInvite {
@@ -55,7 +67,7 @@ model enterpriseTokenInvite {
   user             user              @relation(fields: [createdById], references: [id])
   userTokenInvites userTokenInvite[]
 
-  @@unique([token])
+  @@unique([token, enterpriseId])
   @@map("enterprise_token_invite")
 }
 
@@ -74,7 +86,7 @@ model user {
   enterpriseTokenInvites enterpriseTokenInvite[]
   userTokenInvites       userTokenInvite[]
 
-  @@unique([email])
+  @@unique([email, enterpriseId])
   @@map("user")
 }
 
@@ -118,7 +130,9 @@ model influencer {
   influencerPlatformUrl      influencerPlatformUrl[]
   influencerCountDailyClicks influencerCountDailyClicks[]
 
-  @@unique([name, email, personalUrl, slug])
+  @@unique([email, enterpriseId])
+  @@unique([slug, enterpriseId])
+  @@unique([personalUrl, enterpriseId])
 }
 
 model platform {
@@ -174,7 +188,7 @@ model enterpriseUrl {
   enterpriseCategory enterpriseCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   urlSchedule        urlSchedule[]
 
-  @@unique([url])
+  @@unique([url, enterpriseId])
   @@map("enterprise_url")
 }
 

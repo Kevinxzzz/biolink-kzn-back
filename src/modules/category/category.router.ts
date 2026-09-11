@@ -6,12 +6,16 @@ import * as categoryController from "./category.controller";
 
 const categoryRoutes = Router();
 
+categoryRoutes.get("/public", categoryController.listPublic);
+
 // Middleware aplicado a todas as rotas do módulo de categorias
 categoryRoutes.use(authenticate);
 categoryRoutes.use(hasRole(UserRole.OWNER, UserRole.ADMIN));
 
 categoryRoutes.post("/", categoryController.create);
 categoryRoutes.get("/", categoryController.list);
+categoryRoutes.get("/rotation", categoryController.getRotationType);
+categoryRoutes.patch("/rotation", categoryController.updateAllCategoriesRotation);
 categoryRoutes.get("/:id/rotation", categoryController.getCategoryRotation);
 categoryRoutes.patch("/:id/rotation", categoryController.updateCategoryRotation);
 categoryRoutes.get("/:id", categoryController.getById);

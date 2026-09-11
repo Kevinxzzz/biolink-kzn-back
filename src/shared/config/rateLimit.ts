@@ -10,7 +10,7 @@ const handler = (req: Request, res: Response, next: NextFunction) => {
 };
 
 export const authLimiter = rateLimit({
-    windowMs: 60 * 5000,
+    windowMs: 60 * 1000,
     max: 10,
     handler
 });

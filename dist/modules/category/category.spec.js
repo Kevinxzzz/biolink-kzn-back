@@ -15,7 +15,9 @@ jest.mock("../../shared/database/prisma", () => ({
         },
         categoryRotation: {
             create: jest.fn(),
-            update: jest.fn()
+            findFirst: jest.fn(),
+            update: jest.fn(),
+            updateMany: jest.fn()
         }
     }
 }));
@@ -33,7 +35,9 @@ describe("Category Module", () => {
             },
             categoryRotation: {
                 create: jest.fn(),
-                update: jest.fn()
+                findFirst: jest.fn(),
+                update: jest.fn(),
+                updateMany: jest.fn()
             }
         };
         prisma_1.prisma.$transaction.mockImplementation(async (cb) => {
@@ -194,6 +198,51 @@ describe("Category Module", () => {
                 statusCode: 404,
                 message: "Categoria não encontrada ou acesso negado"
             });
+        });
+        it("16. updateAllCategoriesRotationConfig deve atualizar em massa corretamente e retornar contagem", async () => {
+            mockTx.$queryRaw.mockResolvedValue([{ id: "cat1" }, { id: "cat2" }]);
+            mockTx.categoryRotation.updateMany.mockResolvedValue({ count: 2 });
+            const result = await (0, category_service_1.updateAllCategoriesRotationConfig)("ent1", {
+                toggleType: "TIMER",
+                timerInMinutes: 60
+            });
+            expect(mockTx.$queryRaw).toHaveBeenCalled();
+            expect(mockTx.categoryRotation.updateMany).toHaveBeenCalledWith({
+                where: { categoryId: { in: ["cat1", "cat2"] } },
+                data: expect.objectContaining({
+                    toggleType: "TIMER",
+                    timerInMinutes: 60,
+                    limitClicks: null,
+                    timerStartedAt: expect.any(Date)
+                })
+            });
+            expect(result).toEqual({ count: 2 });
+        });
+        it("17. updateAllCategoriesRotationConfig deve retornar 0 se a empresa não tiver categorias", async () => {
+            mockTx.$queryRaw.mockResolvedValue([]);
+            const result = await (0, category_service_1.updateAllCategoriesRotationConfig)("ent2", { toggleType: "MANUAL" });
+            expect(mockTx.$queryRaw).toHaveBeenCalled();
+            expect(mockTx.categoryRotation.updateMany).not.toHaveBeenCalled();
+            expect(result).toEqual({ count: 0 });
+        });
+        it("18. getRotationType deve retornar o toggleType configurado", async () => {
+            prisma_1.prisma.categoryRotation.findFirst.mockResolvedValue({ toggleType: "TIMER" });
+            const result = await (0, category_service_1.getRotationType)("ent1");
+            expect(prisma_1.prisma.categoryRotation.findFirst).toHaveBeenCalledWith({
+                where: { enterpriseCategory: { enterpriseId: "ent1" } },
+                select: {
+                    toggleType: true,
+                    limitClicks: true,
+                    timerInMinutes: true,
+                    timerStartedAt: true
+                }
+            });
+            expect(result).toEqual({ toggleType: "TIMER" });
+        });
+        it("19. getRotationType deve retornar null quando nenhum registro for encontrado", async () => {
+            prisma_1.prisma.categoryRotation.findFirst.mockResolvedValue(null);
+            const result = await (0, category_service_1.getRotationType)();
+            expect(result).toBeNull();
         });
     });
 });

@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { AppError } from "../../shared/errors/appError";
 import { createCategoryZod, updateCategoryZod, updateCategoryRotationZod } from "../../shared/zod/category.zod";
 import * as categoryService from "./category.service";
+import { extractDomain } from "../../shared/utils/domain";
 
 export const create = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -16,6 +17,20 @@ export const create = async (req: Request, res: Response, next: NextFunction) =>
             const message = error.issues?.[0]?.message || "Os dados informados são inválidos.";
             return next(new AppError(message, 400));
         }
+        next(error);
+    }
+};
+
+export const listPublic = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const domain = extractDomain(req);
+        if (!domain) {
+            return next(new AppError("Domínio não identificado na requisição.", 403));
+        }
+
+        const result = await categoryService.getPublicCategories(domain);
+        return res.status(200).json({ data: result });
+    } catch (error) {
         next(error);
     }
 };
@@ -102,6 +117,37 @@ export const updateCategoryRotation = async (req: Request, res: Response, next: 
             const message = error.issues?.[0]?.message || "Os dados informados são inválidos.";
             return next(new AppError(message, 400));
         }
+        next(error);
+    }
+};
+
+export const updateAllCategoriesRotation = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const parsedData = updateCategoryRotationZod.parse(req.body);
+        const enterpriseId = req.user!.enterpriseId;
+
+        const result = await categoryService.updateAllCategoriesRotationConfig(enterpriseId, parsedData);
+
+        return res.status(200).json({ 
+            message: "Tipo de rotação de todas as categorias atualizado com sucesso.",
+            updatedCount: result.count 
+        });
+    } catch (error: any) {
+        if (error.name === "ZodError") {
+            const message = error.issues?.[0]?.message || "Os dados informados são inválidos.";
+            return next(new AppError(message, 400));
+        }
+        next(error);
+    }
+};
+
+export const getRotationType = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const enterpriseId = req.user?.enterpriseId;
+        const result = await categoryService.getRotationType(enterpriseId);
+
+        return res.status(200).json({ data: result });
+    } catch (error) {
         next(error);
     }
 };

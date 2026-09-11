@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { AppError } from "../../shared/errors/appError";
 import { createLinkZod, updateLinkZod, reorderLinksZod } from "../../shared/zod/links.zod";
 import * as linksService from "./links.service";
+import { extractDomain } from "../../shared/utils/domain";
 
 export const create = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -108,10 +109,9 @@ export const reorder = async (req: Request, res: Response, next: NextFunction) =
 
 export const redirect = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const enterpriseId = req.params.enterpriseId as string;
         const categoryId = req.params.categoryId as string;
 
-        const url = await linksService.processClickAndRedirect(enterpriseId, categoryId);
+        const url = await linksService.processClickAndRedirect(categoryId);
 
         return res.redirect(url);
     } catch (error) {

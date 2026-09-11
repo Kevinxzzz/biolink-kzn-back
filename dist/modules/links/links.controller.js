@@ -136,9 +136,8 @@ const reorder = async (req, res, next) => {
 exports.reorder = reorder;
 const redirect = async (req, res, next) => {
     try {
-        const enterpriseId = req.params.enterpriseId;
         const categoryId = req.params.categoryId;
-        const url = await linksService.processClickAndRedirect(enterpriseId, categoryId);
+        const url = await linksService.processClickAndRedirect(categoryId);
         return res.redirect(url);
     }
     catch (error) {
