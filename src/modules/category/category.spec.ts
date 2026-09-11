@@ -36,6 +36,7 @@ describe("Category Module", () => {
             },
             categoryRotation: {
                 create: jest.fn(),
+                findFirst: jest.fn(),
                 update: jest.fn(),
                 updateMany: jest.fn()
             }
@@ -279,17 +280,22 @@ describe("Category Module", () => {
 
             expect(prisma.categoryRotation.findFirst).toHaveBeenCalledWith({
                 where: { enterpriseCategory: { enterpriseId: "ent1" } },
-                select: { toggleType: true }
+                select: {
+                    toggleType: true,
+                    limitClicks: true,
+                    timerInMinutes: true,
+                    timerStartedAt: true
+                }
             });
             expect(result).toEqual({ toggleType: "TIMER" });
         });
 
-        it("19. getRotationType deve retornar fallback MANUAL quando nenhum registro for encontrado", async () => {
+        it("19. getRotationType deve retornar null quando nenhum registro for encontrado", async () => {
             (prisma.categoryRotation.findFirst as jest.Mock).mockResolvedValue(null);
 
             const result = await getRotationType();
 
-            expect(result).toEqual({ toggleType: "MANUAL" });
+            expect(result).toBeNull();
         });
     });
 });

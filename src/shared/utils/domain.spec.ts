@@ -29,24 +29,42 @@ describe('Domain Utils', () => {
     });
 
     describe('extractDomain', () => {
-        const mockRequest = (hostname?: string): Request => {
+        const mockRequest = (hostname?: string, headers: Record<string, string | string[] | undefined> = {}): Request => {
             return {
-                hostname: hostname
+                hostname: hostname,
+                headers: headers
             } as Request;
         };
 
-        it('deve usar req.hostname e normalizar domínios de produção', () => {
+        it('deve usar o Origin se fornecido', () => {
+            const req = mockRequest('fallback.com', {
+                'origin': 'https://origin.com:3000'
+            });
+            expect(extractDomain(req)).toBe('origin.com');
+        });
+
+        it('deve extrair o hostname da URL do origin mesmo com path', () => {
+            const req = mockRequest('fallback.com', {
+                'origin': 'https://kzn-front-stage-production.up.railway.app/alguma-rota'
+            });
+            expect(extractDomain(req)).toBe('kzn-front-stage-production.up.railway.app');
+        });
+
+        it('deve ignorar Origin malformado e usar hostname como fallback', () => {
+            const req = mockRequest('kzn.com', {
+                'origin': 'not-a-valid-url'
+            });
+            expect(extractDomain(req)).toBe('kzn.com');
+        });
+
+        it('deve usar req.hostname como fallback se os headers nao existirem', () => {
             expect(extractDomain(mockRequest('alecio.com'))).toBe('alecio.com');
             expect(extractDomain(mockRequest('kzn.com'))).toBe('kzn.com');
-        });
-
-        it('deve usar req.hostname e normalizar domínios de desenvolvimento locais', () => {
             expect(extractDomain(mockRequest('localhost'))).toBe('localhost');
             expect(extractDomain(mockRequest('dev-kzn.local'))).toBe('dev-kzn.local');
-            expect(extractDomain(mockRequest('dev-alecio.local'))).toBe('dev-alecio.local');
         });
 
-        it('deve retornar null se req.hostname nao existir', () => {
+        it('deve retornar null se req.hostname e headers nao existirem', () => {
             const req = mockRequest(undefined);
             expect(extractDomain(req)).toBeNull();
         });
