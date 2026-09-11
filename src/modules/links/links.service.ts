@@ -288,18 +288,13 @@ export const reorderLinks = async (enterpriseId: string, { categoryId, links }: 
     });
 };
 
-export const processClickAndRedirect = async (domain: string, categoryId: string): Promise<string> => {
-    const app = await prisma.application.findUnique({ where: { domain } });
-    if (!app) {
-        throw new AppError("Aplicação inválida.", 403);
-    }
-
-    const category = await prisma.enterpriseCategory.findFirst({
-        where: { id: categoryId, enterprise: { applicationId: app.id } }
+export const processClickAndRedirect = async (categoryId: string): Promise<string> => {
+    const category = await prisma.enterpriseCategory.findUnique({
+        where: { id: categoryId }
     });
 
     if (!category) {
-        throw new AppError("Categoria não encontrada ou não pertence a esta aplicação.", 404);
+        throw new AppError("Categoria não encontrada.", 404);
     }
 
     const enterpriseId = category.enterpriseId;
@@ -435,5 +430,5 @@ export const processClickAndRedirectOnlyEfootball = async (): Promise<string> =>
         throw new AppError("EnterpriseId indefinido.", 404);
     }
 
-    return await processClickAndRedirect(enterpriseId, categoryEfootball.id);
+    return await processClickAndRedirect(categoryEfootball.id);
 };

@@ -109,13 +109,9 @@ export const reorder = async (req: Request, res: Response, next: NextFunction) =
 
 export const redirect = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const domain = extractDomain(req);
-        if (!domain) {
-            return next(new AppError("Domínio não identificado na requisição.", 403));
-        }
         const categoryId = req.params.categoryId as string;
 
-        const url = await linksService.processClickAndRedirect(domain, categoryId);
+        const url = await linksService.processClickAndRedirect(categoryId);
 
         return res.redirect(url);
     } catch (error) {
