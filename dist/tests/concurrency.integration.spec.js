@@ -96,7 +96,7 @@ describe("Concurrency Integration Tests", () => {
             await redis_1.redis.set(key, 49);
             const promises = [];
             for (let i = 0; i < 2; i++) {
-                promises.push((0, links_service_1.processClickAndRedirect)(domain, categoryId));
+                promises.push((0, links_service_1.processClickAndRedirect)(categoryId));
             }
             await Promise.all(promises);
             const finalLinkA = await prisma_1.prisma.enterpriseUrl.findUnique({ where: { id: linkAId } });
@@ -115,7 +115,7 @@ describe("Concurrency Integration Tests", () => {
             await redis_1.redis.set(key, 10);
             const promises = [];
             for (let i = 0; i < 5; i++) {
-                promises.push((0, links_service_1.processClickAndRedirect)(domain, categoryId));
+                promises.push((0, links_service_1.processClickAndRedirect)(categoryId));
             }
             promises.push((0, cronIncrement_service_1.consolidateClicks)());
             await Promise.all(promises);

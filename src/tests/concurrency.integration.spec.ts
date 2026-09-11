@@ -108,7 +108,7 @@ describe("Concurrency Integration Tests", () => {
 
             const promises = [];
             for (let i = 0; i < 2; i++) {
-                promises.push(processClickAndRedirect(domain, categoryId));
+                promises.push(processClickAndRedirect(categoryId));
             }
             await Promise.all(promises);
 
@@ -131,7 +131,7 @@ describe("Concurrency Integration Tests", () => {
 
             const promises = [];
             for (let i = 0; i < 5; i++) {
-                promises.push(processClickAndRedirect(domain, categoryId));
+                promises.push(processClickAndRedirect(categoryId));
             }
             promises.push(consolidateClicks());
 
