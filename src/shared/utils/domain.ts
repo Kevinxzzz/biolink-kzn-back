@@ -9,6 +9,12 @@ import { Request } from 'express';
  */
 export function extractDomain(req: Request): string | null {
     if (!req.hostname) return null;
+    console.log({
+        hostname: req.hostname,
+        host: req.headers.host,
+        forwardedHost: req.headers["x-forwarded-host"],
+        origin: req.headers.origin,
+    });
     return normalizeDomain(req.hostname);
 }
 
@@ -20,10 +26,10 @@ export function extractDomain(req: Request): string | null {
  */
 export function normalizeDomain(url: string): string {
     if (!url) return '';
-    
+
     // Remove protocolo (http://, https://)
     let clean = url.replace(/^https?:\/\//i, '');
-    
+
     // Remove qualquer path ou trailing slash
     clean = clean.split('/')[0];
 
