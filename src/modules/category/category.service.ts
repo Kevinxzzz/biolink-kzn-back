@@ -22,9 +22,29 @@ export const createCategory = async (enterpriseId: string, data: CreateCategoryI
                 select: categorySelect
             });
 
+            const existingRotation = await tx.categoryRotation.findFirst({
+                where: {
+                    enterpriseCategory: {
+                        enterpriseId
+                    },
+                    categoryId: {
+                        not: newCategory.id
+                    },
+                    toggleType: {
+                        not: "MANUAL"
+                    }
+                },
+                select: {
+                    toggleType: true
+                }
+            });
+
+            const toggleType = existingRotation ? existingRotation.toggleType : "MANUAL";
+
             await tx.categoryRotation.create({
                 data: {
                     categoryId: newCategory.id,
+                    toggleType,
                     updateAt: new Date()
                 }
             });
@@ -144,6 +164,76 @@ export const updateCategoryRotationConfig = async (id: string, enterpriseId: str
             }
         });
     });
+};
+
+export const updateAllCategoriesRotationConfig = async (enterpriseId: string, data: UpdateCategoryRotationInput) => {
+    return await prisma.$transaction(async (tx) => {
+        const categories = await tx.$queryRaw<{ id: string }[]>`
+            SELECT id FROM "enterprise_category" 
+            WHERE "enterprise_id" = ${enterpriseId}::uuid 
+            FOR UPDATE
+        `;
+
+        if (!categories || categories.length === 0) {
+            return { count: 0 };
+        }
+
+        const categoryIds = categories.map(c => c.id);
+
+        let limitClicks = null;
+        let timerInMinutes = null;
+        let timerStartedAt = null;
+
+        if (data.toggleType === "LIMITCLICKS") {
+            limitClicks = data.limitClicks ?? null;
+        } else if (data.toggleType === "TIMER") {
+            timerInMinutes = data.timerInMinutes ?? null;
+            timerStartedAt = new Date();
+        }
+
+        const result = await tx.categoryRotation.updateMany({
+            where: { categoryId: { in: categoryIds } },
+            data: {
+                toggleType: data.toggleType,
+                limitClicks,
+                timerInMinutes,
+                timerStartedAt,
+                updateAt: new Date()
+            }
+        });
+
+        return { count: result.count };
+    });
+};
+
+export const getRotationType = async (enterpriseId?: string) => {
+    const rotation = await prisma.categoryRotation.findFirst({
+        where: enterpriseId ? {
+            enterpriseCategory: { enterpriseId }
+        } : undefined,
+        select: {
+            toggleType: true,
+            limitClicks: true,
+            timerInMinutes: true,
+            timerStartedAt: true
+        }
+    });
+
+    if (rotation) {
+        return rotation;
+    }
+
+    const anyRotation = await prisma.categoryRotation.findFirst({
+        select: {
+            toggleType: true,
+            limitClicks: true,
+            timerInMinutes: true,
+            timerStartedAt: true
+
+        }
+    });
+
+    return anyRotation;
 };
 
 export const getPublicCategories = async (domain: string) => {

@@ -13,13 +13,12 @@ describe("Concurrency Integration Tests", () => {
     let applicationId;
     let domain = "test.com";
     beforeAll(async () => {
-        // Clear tables
-        await prisma_1.prisma.enterpriseUrl.deleteMany();
-        await prisma_1.prisma.urlSchedule.deleteMany();
-        await prisma_1.prisma.categoryRotation.deleteMany();
-        await prisma_1.prisma.enterpriseCategory.deleteMany();
-        await prisma_1.prisma.enterprise.deleteMany();
-        await prisma_1.prisma.application.deleteMany();
+        // Clear previous test enterprise and application if exists
+        const oldApp = await prisma_1.prisma.application.findUnique({ where: { domain } });
+        if (oldApp) {
+            await prisma_1.prisma.enterprise.deleteMany({ where: { applicationId: oldApp.id } });
+            await prisma_1.prisma.application.delete({ where: { id: oldApp.id } });
+        }
         // Create initial data
         const app = await prisma_1.prisma.application.create({
             data: {
@@ -52,9 +51,9 @@ describe("Concurrency Integration Tests", () => {
         categoryId = category.id;
     });
     beforeEach(async () => {
-        // Clear links and rotation settings for each test
-        await prisma_1.prisma.enterpriseUrl.deleteMany();
-        await prisma_1.prisma.categoryRotation.deleteMany();
+        // Clear links and rotation settings for this test
+        await prisma_1.prisma.enterpriseUrl.deleteMany({ where: { enterpriseId } });
+        await prisma_1.prisma.categoryRotation.deleteMany({ where: { categoryId } });
         await redis_1.redis.flushall();
         // Setup 2 links
         const linkA = await prisma_1.prisma.enterpriseUrl.create({
@@ -150,11 +149,12 @@ describe("Concurrency Integration Tests", () => {
         });
     });
     afterAll(async () => {
-        await prisma_1.prisma.enterpriseUrl.deleteMany();
-        await prisma_1.prisma.urlSchedule.deleteMany();
-        await prisma_1.prisma.categoryRotation.deleteMany();
-        await prisma_1.prisma.enterpriseCategory.deleteMany();
-        await prisma_1.prisma.enterprise.deleteMany();
+        if (enterpriseId) {
+            await prisma_1.prisma.enterprise.deleteMany({ where: { id: enterpriseId } });
+        }
+        if (applicationId) {
+            await prisma_1.prisma.application.deleteMany({ where: { id: applicationId } });
+        }
         await prisma_1.prisma.$disconnect();
         await prisma_1.pool.end();
         redis_1.redis.disconnect();

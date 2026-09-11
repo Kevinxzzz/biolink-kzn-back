@@ -15,13 +15,12 @@ describe("Concurrency Integration Tests", () => {
     let domain = "test.com";
 
     beforeAll(async () => {
-        // Clear tables
-        await prisma.enterpriseUrl.deleteMany();
-        await prisma.urlSchedule.deleteMany();
-        await prisma.categoryRotation.deleteMany();
-        await prisma.enterpriseCategory.deleteMany();
-        await prisma.enterprise.deleteMany();
-        await prisma.application.deleteMany();
+        // Clear previous test enterprise and application if exists
+        const oldApp = await prisma.application.findUnique({ where: { domain } });
+        if (oldApp) {
+            await prisma.enterprise.deleteMany({ where: { applicationId: oldApp.id } });
+            await prisma.application.delete({ where: { id: oldApp.id } });
+        }
 
         // Create initial data
         const app = await prisma.application.create({
@@ -57,9 +56,9 @@ describe("Concurrency Integration Tests", () => {
     });
 
     beforeEach(async () => {
-        // Clear links and rotation settings for each test
-        await prisma.enterpriseUrl.deleteMany();
-        await prisma.categoryRotation.deleteMany();
+        // Clear links and rotation settings for this test
+        await prisma.enterpriseUrl.deleteMany({ where: { enterpriseId } });
+        await prisma.categoryRotation.deleteMany({ where: { categoryId } });
         await redis.flushall();
 
         // Setup 2 links
@@ -174,11 +173,12 @@ describe("Concurrency Integration Tests", () => {
     });
 
     afterAll(async () => {
-        await prisma.enterpriseUrl.deleteMany();
-        await prisma.urlSchedule.deleteMany();
-        await prisma.categoryRotation.deleteMany();
-        await prisma.enterpriseCategory.deleteMany();
-        await prisma.enterprise.deleteMany();
+        if (enterpriseId) {
+            await prisma.enterprise.deleteMany({ where: { id: enterpriseId } });
+        }
+        if (applicationId) {
+            await prisma.application.deleteMany({ where: { id: applicationId } });
+        }
         await prisma.$disconnect();
         await pool.end();
         redis.disconnect();
