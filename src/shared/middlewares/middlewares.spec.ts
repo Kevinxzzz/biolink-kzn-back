@@ -402,6 +402,54 @@ describe("Middlewares Layer Test Suite", () => {
                 expect(error.statusCode).toBe(401);
             });
 
+            it("should throw 403 when Origin is forged (Origin: Tenant B, JWT: Tenant A)", async () => {
+                (prisma.application.findUnique as jest.Mock).mockResolvedValue({
+                    id: "app-id-2", // Alecio (Tenant B)
+                    name: "Alecio",
+                    domain: "alecio.com"
+                });
+                
+                // Forjando o Origin para tentar acessar o Tenant B
+                mockReq.headers = { origin: "https://alecio.com", authorization: "Bearer validtoken" };
+                
+                (jwt.verify as jest.Mock).mockReturnValue({
+                    sub: "kzn-user-1",
+                    accountType: "USER",
+                    role: UserRole.OWNER,
+                    applicationId: "app-id-1" // JWT pertence à KZN (Tenant A)
+                });
+
+                await authenticate(mockReq as Request, mockRes as Response, mockNext);
+                expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
+                const error = mockNext.mock.calls[0][0];
+                expect(error.statusCode).toBe(403);
+                expect(error.message).toBe("Acesso não permitido para esta aplicação.");
+            });
+
+            it("should throw 403 when Origin is forged (Origin: Tenant A, JWT: Tenant B)", async () => {
+                (prisma.application.findUnique as jest.Mock).mockResolvedValue({
+                    id: "app-id-1", // KZN (Tenant A)
+                    name: "KZN",
+                    domain: "kzn.com"
+                });
+                
+                // Forjando o Origin para tentar acessar o Tenant A
+                mockReq.headers = { origin: "https://kzn.com", authorization: "Bearer validtoken" };
+                
+                (jwt.verify as jest.Mock).mockReturnValue({
+                    sub: "alecio-user-1",
+                    accountType: "USER",
+                    role: UserRole.OWNER,
+                    applicationId: "app-id-2" // JWT pertence à Alecio (Tenant B)
+                });
+
+                await authenticate(mockReq as Request, mockRes as Response, mockNext);
+                expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
+                const error = mockNext.mock.calls[0][0];
+                expect(error.statusCode).toBe(403);
+                expect(error.message).toBe("Acesso não permitido para esta aplicação.");
+            });
+
             it("should throw 403 when JWT is valid KZN but Enterprise belongs to Alecio (Cross-Enterprise Hijack)", async () => {
                 mockReq.headers = { authorization: "Bearer validtoken" };
                 (jwt.verify as jest.Mock).mockReturnValue({

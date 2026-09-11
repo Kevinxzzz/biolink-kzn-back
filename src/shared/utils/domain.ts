@@ -8,14 +8,20 @@ import { Request } from 'express';
  * @returns Domínio normalizado (sem protocolo, porta ou trailing slashes) ou null
  */
 export function extractDomain(req: Request): string | null {
-    if (!req.hostname) return null;
-    console.log({
-        hostname: req.hostname,
-        host: req.headers.host,
-        forwardedHost: req.headers["x-forwarded-host"],
-        origin: req.headers.origin,
-    });
-    return normalizeDomain(req.hostname);
+    const origin = req.headers.origin;
+    if (origin) {
+        try {
+            return normalizeDomain(new URL(origin).hostname);
+        } catch {
+            // Ignora a URL malformada e segue para o fallback
+        }
+    }
+
+    if (req.hostname) {
+        return normalizeDomain(req.hostname);
+    }
+
+    return null;
 }
 
 /**

@@ -10,9 +10,19 @@ exports.normalizeDomain = normalizeDomain;
  * @returns Domínio normalizado (sem protocolo, porta ou trailing slashes) ou null
  */
 function extractDomain(req) {
-    if (!req.hostname)
-        return null;
-    return normalizeDomain(req.hostname);
+    const origin = req.headers.origin;
+    if (origin) {
+        try {
+            return normalizeDomain(new URL(origin).hostname);
+        }
+        catch {
+            // Ignora a URL malformada e segue para o fallback
+        }
+    }
+    if (req.hostname) {
+        return normalizeDomain(req.hostname);
+    }
+    return null;
 }
 /**
  * Normaliza uma URL ou Host para extrair apenas o domínio puro.

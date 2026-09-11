@@ -21,9 +21,27 @@ const createCategory = async (enterpriseId, data) => {
                 },
                 select: categorySelect
             });
+            const existingRotation = await tx.categoryRotation.findFirst({
+                where: {
+                    enterpriseCategory: {
+                        enterpriseId
+                    },
+                    categoryId: {
+                        not: newCategory.id
+                    },
+                    toggleType: {
+                        not: "MANUAL"
+                    }
+                },
+                select: {
+                    toggleType: true
+                }
+            });
+            const toggleType = existingRotation ? existingRotation.toggleType : "MANUAL";
             await tx.categoryRotation.create({
                 data: {
                     categoryId: newCategory.id,
+                    toggleType,
                     updateAt: new Date()
                 }
             });
@@ -182,18 +200,24 @@ const getRotationType = async (enterpriseId) => {
             enterpriseCategory: { enterpriseId }
         } : undefined,
         select: {
-            toggleType: true
+            toggleType: true,
+            limitClicks: true,
+            timerInMinutes: true,
+            timerStartedAt: true
         }
     });
     if (rotation) {
-        return { toggleType: rotation.toggleType };
+        return rotation;
     }
     const anyRotation = await prisma_1.prisma.categoryRotation.findFirst({
-        select: { toggleType: true }
+        select: {
+            toggleType: true,
+            limitClicks: true,
+            timerInMinutes: true,
+            timerStartedAt: true
+        }
     });
-    return {
-        toggleType: anyRotation?.toggleType ?? "MANUAL"
-    };
+    return anyRotation;
 };
 exports.getRotationType = getRotationType;
 const getPublicCategories = async (domain) => {
