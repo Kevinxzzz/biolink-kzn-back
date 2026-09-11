@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getPublicCategories = exports.updateCategoryRotationConfig = exports.getCategoryRotationConfig = exports.deleteCategory = exports.updateCategory = exports.getCategoryById = exports.getCategories = exports.createCategory = void 0;
+exports.getPublicCategories = exports.getRotationType = exports.updateAllCategoriesRotationConfig = exports.updateCategoryRotationConfig = exports.getCategoryRotationConfig = exports.deleteCategory = exports.updateCategory = exports.getCategoryById = exports.getCategories = exports.createCategory = void 0;
 const prisma_1 = require("../../shared/database/prisma");
 const appError_1 = require("../../shared/errors/appError");
 const categorySelect = {
@@ -141,6 +141,61 @@ const updateCategoryRotationConfig = async (id, enterpriseId, data) => {
     });
 };
 exports.updateCategoryRotationConfig = updateCategoryRotationConfig;
+const updateAllCategoriesRotationConfig = async (enterpriseId, data) => {
+    return await prisma_1.prisma.$transaction(async (tx) => {
+        const categories = await tx.$queryRaw `
+            SELECT id FROM "enterprise_category" 
+            WHERE "enterprise_id" = ${enterpriseId}::uuid 
+            FOR UPDATE
+        `;
+        if (!categories || categories.length === 0) {
+            return { count: 0 };
+        }
+        const categoryIds = categories.map(c => c.id);
+        let limitClicks = null;
+        let timerInMinutes = null;
+        let timerStartedAt = null;
+        if (data.toggleType === "LIMITCLICKS") {
+            limitClicks = data.limitClicks ?? null;
+        }
+        else if (data.toggleType === "TIMER") {
+            timerInMinutes = data.timerInMinutes ?? null;
+            timerStartedAt = new Date();
+        }
+        const result = await tx.categoryRotation.updateMany({
+            where: { categoryId: { in: categoryIds } },
+            data: {
+                toggleType: data.toggleType,
+                limitClicks,
+                timerInMinutes,
+                timerStartedAt,
+                updateAt: new Date()
+            }
+        });
+        return { count: result.count };
+    });
+};
+exports.updateAllCategoriesRotationConfig = updateAllCategoriesRotationConfig;
+const getRotationType = async (enterpriseId) => {
+    const rotation = await prisma_1.prisma.categoryRotation.findFirst({
+        where: enterpriseId ? {
+            enterpriseCategory: { enterpriseId }
+        } : undefined,
+        select: {
+            toggleType: true
+        }
+    });
+    if (rotation) {
+        return { toggleType: rotation.toggleType };
+    }
+    const anyRotation = await prisma_1.prisma.categoryRotation.findFirst({
+        select: { toggleType: true }
+    });
+    return {
+        toggleType: anyRotation?.toggleType ?? "MANUAL"
+    };
+};
+exports.getRotationType = getRotationType;
 const getPublicCategories = async (domain) => {
     const app = await prisma_1.prisma.application.findUnique({ where: { domain } });
     if (!app) {

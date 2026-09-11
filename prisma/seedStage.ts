@@ -1,6 +1,7 @@
 import { PrismaClient, UserRole, Platform } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import pg from "pg";
+import bcrypt from "bcryptjs";
 import { env } from "../src/shared/config/env";
 import { normalizeDomain } from "../src/shared/utils/domain";
 
@@ -71,7 +72,179 @@ async function main() {
         }
     }
 
-    // Seed Categories
+    // Seed Dev Enterprise
+    console.log("Seeding Dev Enterprise and User...");
+    const devEnterpriseEmail = "dev@gmail.com";
+    const devEnterpriseName = "dev";
+    const devEnterprisePhone = "83999911363";
+
+    const targetDomain = normalizeDomain(env.KZN_URL_STAGE || env.KZN_URL!);
+    const targetApp = await prisma.application.findUnique({
+        where: { domain: targetDomain }
+    });
+
+    if (!targetApp) {
+        throw new Error(`Application for domain '${targetDomain}' not found.`);
+    }
+
+    // Detach targetApp from any other enterprise to satisfy unique constraint
+    await prisma.enterprise.updateMany({
+        where: {
+            applicationId: targetApp.id,
+            email: { not: devEnterpriseEmail }
+        },
+        data: {
+            applicationId: null
+        }
+    });
+
+    const devEnterprise = await prisma.enterprise.upsert({
+        where: { email: devEnterpriseEmail },
+        update: {
+            name: devEnterpriseName,
+            phoneNumber: devEnterprisePhone,
+            applicationId: targetApp.id,
+            updateAt: new Date(),
+        },
+        create: {
+            name: devEnterpriseName,
+            email: devEnterpriseEmail,
+            phoneNumber: devEnterprisePhone,
+            applicationId: targetApp.id,
+            createAt: new Date(),
+            updateAt: new Date(),
+        }
+    });
+    console.log(`Dev enterprise '${devEnterprise.name}' ensured with application '${targetApp.name}' (${targetDomain}).`);
+
+    // Seed Dev User
+    const ownerRole = await prisma.role.findFirst({
+        where: { role: UserRole.OWNER }
+    });
+
+    if (!ownerRole) {
+        throw new Error("Role OWNER not found.");
+    }
+
+    const hashedPassword = await bcrypt.hash("dev@senha00", 10);
+
+    const devUser = await prisma.user.upsert({
+        where: {
+            email_enterpriseId: {
+                email: "dev@gmail.com",
+                enterpriseId: devEnterprise.id,
+            }
+        },
+        update: {
+            name: "dev",
+            password: hashedPassword,
+            roleId: ownerRole.id,
+            updateAt: new Date(),
+        },
+        create: {
+            name: "dev",
+            email: "dev@gmail.com",
+            password: hashedPassword,
+            roleId: ownerRole.id,
+            enterpriseId: devEnterprise.id,
+            createAt: new Date(),
+            updateAt: new Date(),
+        }
+    });
+    console.log(`Dev user '${devUser.email}' ensured.`);
+
+    // Seed 5 Categories for Dev Enterprise, each containing at least 5 links
+    const devCategories = [
+        "efootball",
+        "Redes Sociais",
+        "Promocional",
+        "Parcerias",
+        "Suporte"
+    ];
+
+    for (let catIdx = 0; catIdx < devCategories.length; catIdx++) {
+        const categoryName = devCategories[catIdx];
+
+        const category = await prisma.enterpriseCategory.upsert({
+            where: {
+                name_enterpriseId: {
+                    name: categoryName,
+                    enterpriseId: devEnterprise.id,
+                }
+            },
+            update: {
+                updateAt: new Date(),
+            },
+            create: {
+                name: categoryName,
+                enterpriseId: devEnterprise.id,
+                createAt: new Date(),
+                updateAt: new Date(),
+                categoryRotation: {
+                    create: {
+                        updateAt: new Date(),
+                    }
+                }
+            }
+        });
+
+        await prisma.categoryRotation.upsert({
+            where: {
+                categoryId: category.id,
+            },
+            update: {},
+            create: {
+                categoryId: category.id,
+                updateAt: new Date(),
+            }
+        });
+
+        const activeLinkInCat = await prisma.enterpriseUrl.findFirst({
+            where: {
+                categoryId: category.id,
+                enterpriseId: devEnterprise.id,
+                active: true,
+            }
+        });
+
+        for (let linkIdx = 1; linkIdx <= 5; linkIdx++) {
+            const slug = categoryName.toLowerCase().replace(/[^a-z0-9]/g, "");
+            const url = `https://${slug}-link${linkIdx}.example.com`;
+            const title = `${categoryName} - Link ${linkIdx}`;
+            const shouldBeActive = !activeLinkInCat && linkIdx === 1;
+
+            await prisma.enterpriseUrl.upsert({
+                where: {
+                    url_enterpriseId: {
+                        url,
+                        enterpriseId: devEnterprise.id,
+                    }
+                },
+                update: {
+                    title,
+                    categoryId: category.id,
+                    order: linkIdx,
+                    updateAt: new Date(),
+                },
+                create: {
+                    title,
+                    url,
+                    countClicks: 0,
+                    active: shouldBeActive,
+                    order: linkIdx,
+                    inRotationPool: true,
+                    enterpriseId: devEnterprise.id,
+                    categoryId: category.id,
+                    createAt: new Date(),
+                    updateAt: new Date(),
+                }
+            });
+        }
+
+        console.log(`Category '${categoryName}' with 5 links ensured for enterprise '${devEnterprise.name}'.`);
+    }
+
+    // Seed Categories for all other enterprises
     const enterprises = await prisma.enterprise.findMany();
     for (const ent of enterprises) {
         const categoryName = "efootball";
