@@ -264,16 +264,12 @@ const reorderLinks = async (enterpriseId, { categoryId, links }) => {
     });
 };
 exports.reorderLinks = reorderLinks;
-const processClickAndRedirect = async (domain, categoryId) => {
-    const app = await prisma_1.prisma.application.findUnique({ where: { domain } });
-    if (!app) {
-        throw new appError_1.AppError("Aplicação inválida.", 403);
-    }
-    const category = await prisma_1.prisma.enterpriseCategory.findFirst({
-        where: { id: categoryId, enterprise: { applicationId: app.id } }
+const processClickAndRedirect = async (categoryId) => {
+    const category = await prisma_1.prisma.enterpriseCategory.findUnique({
+        where: { id: categoryId }
     });
     if (!category) {
-        throw new appError_1.AppError("Categoria não encontrada ou não pertence a esta aplicação.", 404);
+        throw new appError_1.AppError("Categoria não encontrada.", 404);
     }
     const enterpriseId = category.enterpriseId;
     const key = `clicks:${enterpriseId}:${categoryId}`;
@@ -384,6 +380,6 @@ const processClickAndRedirectOnlyEfootball = async () => {
     if (!enterpriseId) {
         throw new appError_1.AppError("EnterpriseId indefinido.", 404);
     }
-    return await (0, exports.processClickAndRedirect)(enterpriseId, categoryEfootball.id);
+    return await (0, exports.processClickAndRedirect)(categoryEfootball.id);
 };
 exports.processClickAndRedirectOnlyEfootball = processClickAndRedirectOnlyEfootball;

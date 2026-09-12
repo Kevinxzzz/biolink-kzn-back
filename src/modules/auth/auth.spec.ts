@@ -60,10 +60,7 @@ describe("Auth Module - Register Enterprise", () => {
                 }
             },
             hostname: "localhost",
-            get: jest.fn((header: string) => {
-                if (header.toLowerCase() === "origin") return "http://localhost:3000";
-                return undefined;
-            }) as any
+            headers: { origin: "http://localhost:3000" }
         };
         mockRes = {
             status: jest.fn().mockReturnThis(),
@@ -327,10 +324,7 @@ describe("Auth Module - Login", () => {
                 password: "password123"
             },
             hostname: "localhost",
-            get: jest.fn((header: string) => {
-                if (header.toLowerCase() === "origin") return "http://localhost:3000";
-                return undefined;
-            }) as any
+            headers: { origin: "http://localhost:3000" }
         };
         mockRes = {
             status: jest.fn().mockReturnThis(),

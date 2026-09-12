@@ -37,7 +37,6 @@ exports.redirectOnlyEfootballFromKzn = exports.redirect = exports.reorder = expo
 const appError_1 = require("../../shared/errors/appError");
 const links_zod_1 = require("../../shared/zod/links.zod");
 const linksService = __importStar(require("./links.service"));
-const domain_1 = require("../../shared/utils/domain");
 const create = async (req, res, next) => {
     try {
         const parsedData = links_zod_1.createLinkZod.parse(req.body);
@@ -137,12 +136,8 @@ const reorder = async (req, res, next) => {
 exports.reorder = reorder;
 const redirect = async (req, res, next) => {
     try {
-        const domain = (0, domain_1.extractDomain)(req);
-        if (!domain) {
-            return next(new appError_1.AppError("Domínio não identificado na requisição.", 403));
-        }
         const categoryId = req.params.categoryId;
-        const url = await linksService.processClickAndRedirect(domain, categoryId);
+        const url = await linksService.processClickAndRedirect(categoryId);
         return res.redirect(url);
     }
     catch (error) {

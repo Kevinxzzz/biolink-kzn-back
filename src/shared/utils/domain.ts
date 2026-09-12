@@ -8,8 +8,20 @@ import { Request } from 'express';
  * @returns Domínio normalizado (sem protocolo, porta ou trailing slashes) ou null
  */
 export function extractDomain(req: Request): string | null {
-    if (!req.hostname) return null;
-    return normalizeDomain(req.hostname);
+    const origin = req.headers.origin;
+    if (origin) {
+        try {
+            return normalizeDomain(new URL(origin).hostname);
+        } catch {
+            // Ignora a URL malformada e segue para o fallback
+        }
+    }
+
+    if (req.hostname) {
+        return normalizeDomain(req.hostname);
+    }
+
+    return null;
 }
 
 /**
@@ -20,10 +32,10 @@ export function extractDomain(req: Request): string | null {
  */
 export function normalizeDomain(url: string): string {
     if (!url) return '';
-    
+
     // Remove protocolo (http://, https://)
     let clean = url.replace(/^https?:\/\//i, '');
-    
+
     // Remove qualquer path ou trailing slash
     clean = clean.split('/')[0];
 
