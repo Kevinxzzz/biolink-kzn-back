@@ -96,10 +96,7 @@ export const registerEnterprise = async (data: import("../../shared/types/auth.t
         const existingCompanyPhone = await prisma.enterprise.findFirst({ where: { phoneNumber: data.company.phone } });
         if (existingCompanyPhone) throw new AppError("Telefone da empresa já cadastrado.", 409);
 
-        const existingUserEmail = await prisma.user.findFirst({ where: { email: data.user.email } });
-        if (existingUserEmail) throw new AppError("O e-mail informado para o usuário já está cadastrado.", 409);
-
-        const hashedPassword = await bcrypt.hash(data.user.password, 10);
+        const hashedPassword = await createUserValidationAndHash(data.user.email, data.user.password);
 
         const result = await prisma.$transaction(async (tx) => {
             const roleOwner = await tx.role.findFirst({
@@ -252,4 +249,10 @@ export const getAuthenticatedUser = async (user: import("../../shared/types/toke
             } : null
         };
     }
+};
+
+export const createUserValidationAndHash = async (email: string, passwordString: string) => {
+    const existingUserEmail = await prisma.user.findFirst({ where: { email } });
+    if (existingUserEmail) throw new AppError("O e-mail informado para o usuário já está cadastrado.", 409);
+    return bcrypt.hash(passwordString, 10);
 };
