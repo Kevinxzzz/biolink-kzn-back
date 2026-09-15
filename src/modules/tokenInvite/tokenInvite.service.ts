@@ -117,6 +117,7 @@ export const validateToken = async (token: string, requestDomain: string) => {
     return {
         id: tokenRecord.id,
         enterpriseId: tokenRecord.enterpriseId,
+        enterpriseName: application.enterprise.name,
         valid: true
     };
 };
