@@ -8,8 +8,8 @@ export const createTokenInviteZod = z.object({
 export const registerViaTokenZod = z.object({
     name: z.string().min(3, "O nome deve ter no mínimo 3 caracteres"),
     email: z.string().email("O e-mail informado é inválido"),
-    password: z.string().min(8, "A senha deve ter no mínimo 8 caracteres"),
-    confirmPassword: z.string().min(8, "A confirmação deve ter no mínimo 8 caracteres")
+    password: z.string().min(6, "A senha deve ter no mínimo 6 caracteres"),
+    confirmPassword: z.string().min(6, "A confirmação deve ter no mínimo 6 caracteres")
 }).refine(data => data.password === data.confirmPassword, {
     message: "As senhas não coincidem",
     path: ["confirmPassword"],

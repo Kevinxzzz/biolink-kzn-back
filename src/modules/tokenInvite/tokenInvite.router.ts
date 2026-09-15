@@ -6,13 +6,16 @@ import { authLimiter } from "../../shared/config/rateLimit"; // Usar limiter par
 
 const tokenInviteRoutes = Router();
 
+
+// Rotas Públicas (Registro via convite)
+tokenInviteRoutes.get("/invite/:token/validate", tokenInviteController.validate);
+tokenInviteRoutes.post("/invite/:token/register", authLimiter, tokenInviteController.register);
+
 // Rotas Administrativas (OWNER)
 tokenInviteRoutes.post("/", authenticate, hasRole("OWNER"), tokenInviteController.create);
 tokenInviteRoutes.get("/", authenticate, hasRole("OWNER"), tokenInviteController.list);
 tokenInviteRoutes.delete("/:id", authenticate, hasRole("OWNER"), tokenInviteController.remove);
 
-// Rotas Públicas (Registro via convite)
-tokenInviteRoutes.get("/invite/:token/validate", tokenInviteController.validate);
-tokenInviteRoutes.post("/invite/:token/register", authLimiter, tokenInviteController.register);
+
 
 export { tokenInviteRoutes };
