@@ -2,6 +2,23 @@ import { Request, Response, NextFunction } from "express";
 import { AppError } from "../../shared/errors/appError";
 import { createInfluencerZod, updateInfluencerZod } from "../../shared/zod/influencer.zod";
 import * as influencerService from "./influencer.service";
+import { extractDomain } from "../../shared/utils/domain";
+
+export const getPublicBySlug = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const domain = extractDomain(req);
+        if (!domain) {
+            return next(new AppError("Domínio não identificado na requisição.", 403));
+        }
+
+        const slug = req.params.slug as string;
+        const result = await influencerService.getPublicInfluencerBySlug(slug, domain);
+
+        return res.status(200).json({ data: result });
+    } catch (error) {
+        next(error);
+    }
+};
 
 export const create = async (req: Request, res: Response, next: NextFunction) => {
     try {

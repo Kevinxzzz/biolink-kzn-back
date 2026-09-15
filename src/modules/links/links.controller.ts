@@ -110,8 +110,9 @@ export const reorder = async (req: Request, res: Response, next: NextFunction) =
 export const redirect = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const categoryId = req.params.categoryId as string;
+        const influencerSlug = req.query.influencer as string | undefined;
 
-        const url = await linksService.processClickAndRedirect(categoryId);
+        const url = await linksService.processClickAndRedirect(categoryId, influencerSlug);
 
         return res.redirect(url);
     } catch (error) {

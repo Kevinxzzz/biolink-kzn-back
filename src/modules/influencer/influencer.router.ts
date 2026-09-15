@@ -6,7 +6,9 @@ import * as influencerController from "./influencer.controller";
 
 const influencerRoutes = Router();
 
-// Middleware aplicado a todas as rotas do módulo de influenciadores
+influencerRoutes.get("/public/:slug", influencerController.getPublicBySlug);
+
+// Middleware aplicado a todas as rotas do módulo de influenciadores (exceto a pública acima)
 influencerRoutes.use(authenticate);
 influencerRoutes.use(hasRole(UserRole.OWNER, UserRole.ADMIN));
 

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteInfluencer = exports.updateInfluencer = exports.getInfluencerById = exports.getInfluencers = exports.createInfluencer = void 0;
+exports.getPublicInfluencerBySlug = exports.deleteInfluencer = exports.updateInfluencer = exports.getInfluencerById = exports.getInfluencers = exports.createInfluencer = void 0;
 const prisma_1 = require("../../shared/database/prisma");
 const appError_1 = require("../../shared/errors/appError");
 const handleUniqueConstraintError = (error) => {
@@ -89,3 +89,32 @@ const deleteInfluencer = async (id, enterpriseId) => {
     });
 };
 exports.deleteInfluencer = deleteInfluencer;
+const getPublicInfluencerBySlug = async (slug, domain) => {
+    const app = await prisma_1.prisma.application.findUnique({
+        where: { domain }
+    });
+    if (!app) {
+        throw new appError_1.AppError("Aplicação não encontrada para este domínio.", 403);
+    }
+    const influencer = await prisma_1.prisma.influencer.findFirst({
+        where: {
+            slug,
+            enterprise: {
+                applicationId: app.id
+            }
+        },
+        select: {
+            id: true,
+            name: true,
+            slug: true,
+            personalUrl: true,
+            urlImgProfile: true,
+            imgKey: true
+        }
+    });
+    if (!influencer) {
+        throw new appError_1.AppError("Influenciador não encontrado.", 404);
+    }
+    return influencer;
+};
+exports.getPublicInfluencerBySlug = getPublicInfluencerBySlug;

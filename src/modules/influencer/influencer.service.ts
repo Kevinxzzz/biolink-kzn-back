@@ -90,3 +90,36 @@ export const deleteInfluencer = async (id: string, enterpriseId: string) => {
         where: { id }
     });
 };
+
+export const getPublicInfluencerBySlug = async (slug: string, domain: string) => {
+    const app = await prisma.application.findUnique({
+        where: { domain }
+    });
+
+    if (!app) {
+        throw new AppError("Aplicação não encontrada para este domínio.", 403);
+    }
+
+    const influencer = await prisma.influencer.findFirst({
+        where: {
+            slug,
+            enterprise: {
+                applicationId: app.id
+            }
+        },
+        select: {
+            id: true,
+            name: true,
+            slug: true,
+            personalUrl: true,
+            urlImgProfile: true,
+            imgKey: true
+        }
+    });
+
+    if (!influencer) {
+        throw new AppError("Influenciador não encontrado.", 404);
+    }
+
+    return influencer;
+};

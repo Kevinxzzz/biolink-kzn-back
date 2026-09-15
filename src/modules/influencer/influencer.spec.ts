@@ -168,4 +168,54 @@ describe("Influencer Module", () => {
             expect(prisma.influencer.delete).not.toHaveBeenCalled();
         });
     });
+
+    describe("Public Validation", () => {
+        it("11. deve retornar influenciador público quando domínio e slug combinam no mesmo tenant", async () => {
+            const mockApp = { id: "app1", domain: "kzngg.com" };
+            const mockInfluencer = { id: "inf1", name: "Fulano", slug: "fulano" };
+            
+            // @ts-ignore
+            prisma.application = { findUnique: jest.fn().mockResolvedValue(mockApp) };
+            (prisma.influencer.findFirst as jest.Mock).mockResolvedValue(mockInfluencer);
+
+            const { getPublicInfluencerBySlug } = require("./influencer.service");
+            const result = await getPublicInfluencerBySlug("fulano", "kzngg.com");
+
+            expect(prisma.application.findUnique).toHaveBeenCalledWith({
+                where: { domain: "kzngg.com" }
+            });
+            expect(prisma.influencer.findFirst).toHaveBeenCalledWith({
+                where: {
+                    slug: "fulano",
+                    enterprise: { applicationId: "app1" }
+                },
+                select: expect.any(Object)
+            });
+            expect(result).toEqual(mockInfluencer);
+        });
+
+        it("12. deve retornar 403 se o domínio for inexistente", async () => {
+            // @ts-ignore
+            prisma.application = { findUnique: jest.fn().mockResolvedValue(null) };
+
+            const { getPublicInfluencerBySlug } = require("./influencer.service");
+            await expect(getPublicInfluencerBySlug("fulano", "fake.com")).rejects.toMatchObject({
+                statusCode: 403,
+                message: "Aplicação não encontrada para este domínio."
+            });
+        });
+
+        it("13. deve retornar 404 se o slug não existir ou pertencer a outro domínio/tenant", async () => {
+            const mockApp = { id: "app1", domain: "kzngg.com" };
+            // @ts-ignore
+            prisma.application = { findUnique: jest.fn().mockResolvedValue(mockApp) };
+            (prisma.influencer.findFirst as jest.Mock).mockResolvedValue(null);
+
+            const { getPublicInfluencerBySlug } = require("./influencer.service");
+            await expect(getPublicInfluencerBySlug("wrong-slug", "kzngg.com")).rejects.toMatchObject({
+                statusCode: 404,
+                message: "Influenciador não encontrado."
+            });
+        });
+    });
 });

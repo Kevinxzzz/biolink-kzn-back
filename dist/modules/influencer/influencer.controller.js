@@ -33,10 +33,26 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.remove = exports.update = exports.getById = exports.list = exports.create = void 0;
+exports.remove = exports.update = exports.getById = exports.list = exports.create = exports.getPublicBySlug = void 0;
 const appError_1 = require("../../shared/errors/appError");
 const influencer_zod_1 = require("../../shared/zod/influencer.zod");
 const influencerService = __importStar(require("./influencer.service"));
+const domain_1 = require("../../shared/utils/domain");
+const getPublicBySlug = async (req, res, next) => {
+    try {
+        const domain = (0, domain_1.extractDomain)(req);
+        if (!domain) {
+            return next(new appError_1.AppError("Domínio não identificado na requisição.", 403));
+        }
+        const slug = req.params.slug;
+        const result = await influencerService.getPublicInfluencerBySlug(slug, domain);
+        return res.status(200).json({ data: result });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.getPublicBySlug = getPublicBySlug;
 const create = async (req, res, next) => {
     try {
         const parsedData = influencer_zod_1.createInfluencerZod.parse(req.body);

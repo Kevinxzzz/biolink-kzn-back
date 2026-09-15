@@ -264,7 +264,7 @@ const reorderLinks = async (enterpriseId, { categoryId, links }) => {
     });
 };
 exports.reorderLinks = reorderLinks;
-const processClickAndRedirect = async (categoryId) => {
+const processClickAndRedirect = async (categoryId, influencerSlug) => {
     const category = await prisma_1.prisma.enterpriseCategory.findUnique({
         where: { id: categoryId }
     });
@@ -272,50 +272,89 @@ const processClickAndRedirect = async (categoryId) => {
         throw new appError_1.AppError("Categoria não encontrada.", 404);
     }
     const enterpriseId = category.enterpriseId;
+    let influencerKeyToRollback = null;
+    if (influencerSlug) {
+        try {
+            // Resolve influencer para contabilizar de forma isolada, não bloqueante
+            const influencer = await prisma_1.prisma.influencer.findFirst({
+                where: { slug: influencerSlug, enterpriseId }
+            });
+            if (influencer) {
+                const influencerKey = `influencer_clicks:${enterpriseId}:${influencer.id}`;
+                await redis_1.redis.incr(influencerKey);
+                influencerKeyToRollback = influencerKey;
+            }
+        }
+        catch (error) {
+            // Ignora silenciosamente a falha no incremento do influenciador
+            // O objetivo é NUNCA interromper o clique normal
+            console.error(`Erro ao incrementar clique do influenciador ${influencerSlug}:`, error);
+        }
+    }
     const key = `clicks:${enterpriseId}:${categoryId}`;
     let compensatedAmount = 0;
-    const link = await prisma_1.prisma.enterpriseUrl.findFirst({
-        where: { enterpriseId, categoryId, active: true },
-    });
-    if (!link) {
-        throw new appError_1.AppError("Nenhum link ativo encontrado para esta categoria.", 404);
-    }
-    const config = await prisma_1.prisma.categoryRotation.findFirst({
-        where: { categoryId }
-    });
-    if (!config) {
-        await redis_1.redis.incr(key);
-        return link.url;
-    }
-    let shouldRotate = false;
-    if (config.toggleType === "LIMITCLICKS" && config.limitClicks) {
-        const luaResult = await redis_1.redis.eval(CHECK_LIMIT_LUA_SCRIPT, 1, key, link.countClicks, config.limitClicks);
-        if (luaResult === -1) {
-            shouldRotate = true;
+    try {
+        const link = await prisma_1.prisma.enterpriseUrl.findFirst({
+            where: { enterpriseId, categoryId, active: true },
+        });
+        if (!link) {
+            throw new appError_1.AppError("Nenhum link ativo encontrado para esta categoria.", 404);
         }
-        else {
+        const config = await prisma_1.prisma.categoryRotation.findFirst({
+            where: { categoryId }
+        });
+        if (!config) {
+            await redis_1.redis.incr(key);
             return link.url;
         }
-    }
-    if (shouldRotate) {
-        try {
-            const result = await prisma_1.prisma.$transaction(async (tx) => {
-                await tx.$executeRaw `SELECT id FROM "enterprise_category" WHERE "id" = ${categoryId}::uuid FOR UPDATE`;
-                const currentActive = await tx.enterpriseUrl.findFirst({
-                    where: { enterpriseId, categoryId, active: true }
-                });
-                if (currentActive?.id !== link.id) {
-                    return { rotatedByUs: false, consolidatedByUs: false, link: currentActive || link };
-                }
-                const nextLink = await (0, linkUtils_1.getNextEligibleLink)(tx, enterpriseId, categoryId, link);
-                const redisCountStrTx = await redis_1.redis.get(key);
-                const pending = redisCountStrTx ? parseInt(redisCountStrTx, 10) : 0;
-                if (!nextLink) {
+        let shouldRotate = false;
+        if (config.toggleType === "LIMITCLICKS" && config.limitClicks) {
+            const luaResult = await redis_1.redis.eval(CHECK_LIMIT_LUA_SCRIPT, 1, key, link.countClicks, config.limitClicks);
+            if (luaResult === -1) {
+                shouldRotate = true;
+            }
+            else {
+                return link.url;
+            }
+        }
+        if (shouldRotate) {
+            try {
+                const result = await prisma_1.prisma.$transaction(async (tx) => {
+                    await tx.$executeRaw `SELECT id FROM "enterprise_category" WHERE "id" = ${categoryId}::uuid FOR UPDATE`;
+                    const currentActive = await tx.enterpriseUrl.findFirst({
+                        where: { enterpriseId, categoryId, active: true }
+                    });
+                    if (currentActive?.id !== link.id) {
+                        return { rotatedByUs: false, consolidatedByUs: false, link: currentActive || link };
+                    }
+                    const nextLink = await (0, linkUtils_1.getNextEligibleLink)(tx, enterpriseId, categoryId, link);
+                    const redisCountStrTx = await redis_1.redis.get(key);
+                    const pending = redisCountStrTx ? parseInt(redisCountStrTx, 10) : 0;
+                    if (!nextLink) {
+                        if (pending > 0) {
+                            await tx.enterpriseUrl.update({
+                                where: { id: link.id },
+                                data: { countClicks: { increment: pending }, updateAt: new Date() }
+                            });
+                            const referenceDate = (0, dateUtils_1.getTodayBRTReferenceDate)();
+                            await tx.enterpriseCountDailyClicks.upsert({
+                                where: { enterpriseId_referenceDate: { enterpriseId, referenceDate } },
+                                create: { enterpriseId, referenceDate, dailyClicks: pending, createAt: new Date(), updateAt: new Date() },
+                                update: { dailyClicks: { increment: pending }, updateAt: new Date() }
+                            });
+                            compensatedAmount = pending;
+                            const evalResult = await redis_1.redis.eval(DECR_LUA_SCRIPT, 1, key, pending);
+                            if (evalResult === 0)
+                                compensatedAmount = 0;
+                        }
+                        return { rotatedByUs: false, consolidatedByUs: true, link };
+                    }
+                    const actualClicksRegistered = link.countClicks + pending;
+                    await tx.enterpriseUrl.update({
+                        where: { id: link.id },
+                        data: { active: false, countClicks: actualClicksRegistered, updateAt: new Date() }
+                    });
                     if (pending > 0) {
-                        await tx.enterpriseUrl.update({
-                            where: { id: link.id },
-                            data: { countClicks: { increment: pending }, updateAt: new Date() }
-                        });
                         const referenceDate = (0, dateUtils_1.getTodayBRTReferenceDate)();
                         await tx.enterpriseCountDailyClicks.upsert({
                             where: { enterpriseId_referenceDate: { enterpriseId, referenceDate } },
@@ -327,46 +366,35 @@ const processClickAndRedirect = async (categoryId) => {
                         if (evalResult === 0)
                             compensatedAmount = 0;
                     }
-                    return { rotatedByUs: false, consolidatedByUs: true, link };
-                }
-                const actualClicksRegistered = link.countClicks + pending;
-                await tx.enterpriseUrl.update({
-                    where: { id: link.id },
-                    data: { active: false, countClicks: actualClicksRegistered, updateAt: new Date() }
-                });
-                if (pending > 0) {
-                    const referenceDate = (0, dateUtils_1.getTodayBRTReferenceDate)();
-                    await tx.enterpriseCountDailyClicks.upsert({
-                        where: { enterpriseId_referenceDate: { enterpriseId, referenceDate } },
-                        create: { enterpriseId, referenceDate, dailyClicks: pending, createAt: new Date(), updateAt: new Date() },
-                        update: { dailyClicks: { increment: pending }, updateAt: new Date() }
+                    const activatedLink = await tx.enterpriseUrl.update({
+                        where: { id: nextLink.id },
+                        data: { active: true, countClicks: 0, updateAt: new Date() }
                     });
-                    compensatedAmount = pending;
-                    const evalResult = await redis_1.redis.eval(DECR_LUA_SCRIPT, 1, key, pending);
-                    if (evalResult === 0)
-                        compensatedAmount = 0;
-                }
-                const activatedLink = await tx.enterpriseUrl.update({
-                    where: { id: nextLink.id },
-                    data: { active: true, countClicks: 0, updateAt: new Date() }
+                    return { rotatedByUs: true, consolidatedByUs: false, link: activatedLink };
                 });
-                return { rotatedByUs: true, consolidatedByUs: false, link: activatedLink };
-            });
-            if (result.rotatedByUs || result.consolidatedByUs || (!result.rotatedByUs && !result.consolidatedByUs)) {
-                await redis_1.redis.incr(key);
+                if (result.rotatedByUs || result.consolidatedByUs || (!result.rotatedByUs && !result.consolidatedByUs)) {
+                    await redis_1.redis.incr(key);
+                }
+                return result.link.url;
             }
-            return result.link.url;
-        }
-        catch (err) {
-            if (compensatedAmount > 0) {
-                await redis_1.redis.incrby(key, compensatedAmount);
+            catch (err) {
+                if (compensatedAmount > 0) {
+                    await redis_1.redis.incrby(key, compensatedAmount);
+                }
+                throw err;
             }
-            throw err;
         }
+        // Fluxo Normal (MANUAL, TIMER, SCHEDULE)
+        await redis_1.redis.incr(key);
+        return link.url;
     }
-    // Fluxo Normal (MANUAL, TIMER, SCHEDULE)
-    await redis_1.redis.incr(key);
-    return link.url;
+    catch (error) {
+        if (influencerKeyToRollback) {
+            // Faz o rollback do clique do influenciador caso a rotação ou resolução da URL falhe, garantindo consistência
+            await redis_1.redis.decr(influencerKeyToRollback).catch(e => console.error("Erro no rollback do influenciador:", e));
+        }
+        throw error;
+    }
 };
 exports.processClickAndRedirect = processClickAndRedirect;
 const processClickAndRedirectOnlyEfootball = async () => {

@@ -41,7 +41,8 @@ const hasRole_1 = require("../../shared/middlewares/hasRole");
 const influencerController = __importStar(require("./influencer.controller"));
 const influencerRoutes = (0, express_1.Router)();
 exports.influencerRoutes = influencerRoutes;
-// Middleware aplicado a todas as rotas do módulo de influenciadores
+influencerRoutes.get("/public/:slug", influencerController.getPublicBySlug);
+// Middleware aplicado a todas as rotas do módulo de influenciadores (exceto a pública acima)
 influencerRoutes.use(authenticate_1.authenticate);
 influencerRoutes.use((0, hasRole_1.hasRole)(client_1.UserRole.OWNER, client_1.UserRole.ADMIN));
 influencerRoutes.post("/", influencerController.create);

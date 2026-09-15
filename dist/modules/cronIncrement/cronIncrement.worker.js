@@ -13,6 +13,7 @@ const startConsolidationWorker = () => {
         try {
             console.log("[Worker - Consolidation] Iniciando varredura no Redis para consolidar cliques...");
             await (0, cronIncrement_service_1.consolidateClicks)();
+            await (0, cronIncrement_service_1.consolidateInfluencerClicks)();
             console.log("[Worker - Consolidation] Consolidação concluída com sucesso.");
         }
         catch (error) {
