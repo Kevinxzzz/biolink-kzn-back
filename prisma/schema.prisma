@@ -117,8 +117,8 @@ model influencer {
   id             String   @id @default(uuid()) @db.Uuid
   name           String
   slug           String
-  email          String
-  password       String
+  email          String?
+  password       String?
   counterEntries Int      @map("counter_entries")
   personalUrl    String   @map("personal_url")
   urlImgProfile  String?  @map("url_img_profile")

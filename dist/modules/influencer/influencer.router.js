@@ -33,18 +33,19 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.tokenInviteRoutes = void 0;
+exports.influencerRoutes = void 0;
 const express_1 = require("express");
+const client_1 = require("@prisma/client");
 const authenticate_1 = require("../../shared/middlewares/authenticate");
 const hasRole_1 = require("../../shared/middlewares/hasRole");
-const tokenInviteController = __importStar(require("./tokenInvite.controller"));
-const rateLimit_1 = require("../../shared/config/rateLimit"); // Usar limiter para registro
-const tokenInviteRoutes = (0, express_1.Router)();
-exports.tokenInviteRoutes = tokenInviteRoutes;
-// Rotas Públicas (Registro via convite)
-tokenInviteRoutes.get("/invite/:token/validate", tokenInviteController.validate);
-tokenInviteRoutes.post("/invite/:token/register", rateLimit_1.authLimiter, tokenInviteController.register);
-// Rotas Administrativas (OWNER)
-tokenInviteRoutes.post("/", authenticate_1.authenticate, (0, hasRole_1.hasRole)("OWNER"), tokenInviteController.create);
-tokenInviteRoutes.get("/", authenticate_1.authenticate, (0, hasRole_1.hasRole)("OWNER"), tokenInviteController.list);
-tokenInviteRoutes.delete("/:id", authenticate_1.authenticate, (0, hasRole_1.hasRole)("OWNER"), tokenInviteController.remove);
+const influencerController = __importStar(require("./influencer.controller"));
+const influencerRoutes = (0, express_1.Router)();
+exports.influencerRoutes = influencerRoutes;
+// Middleware aplicado a todas as rotas do módulo de influenciadores
+influencerRoutes.use(authenticate_1.authenticate);
+influencerRoutes.use((0, hasRole_1.hasRole)(client_1.UserRole.OWNER, client_1.UserRole.ADMIN));
+influencerRoutes.post("/", influencerController.create);
+influencerRoutes.get("/", influencerController.list);
+influencerRoutes.get("/:id", influencerController.getById);
+influencerRoutes.patch("/:id", influencerController.update);
+influencerRoutes.delete("/:id", influencerController.remove);
