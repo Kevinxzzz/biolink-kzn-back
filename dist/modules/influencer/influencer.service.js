@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getPublicInfluencerBySlug = exports.deleteInfluencer = exports.updateInfluencer = exports.getInfluencerById = exports.getInfluencers = exports.createInfluencer = void 0;
 const prisma_1 = require("../../shared/database/prisma");
+const redis_1 = require("../../shared/database/redis");
 const appError_1 = require("../../shared/errors/appError");
 const handleUniqueConstraintError = (error) => {
     if (error.code === 'P2002' && error.meta?.target) {
@@ -74,6 +75,27 @@ const getInfluencers = async (enterpriseId) => {
         orderBy: { createAt: 'desc' },
         select: influencerSelect
     });
+    if (influencers.length === 0) {
+        return influencers;
+    }
+    try {
+        const pipeline = redis_1.redis.pipeline();
+        influencers.forEach(influencer => {
+            pipeline.get(`influencer_clicks:${enterpriseId}:${influencer.id}`);
+        });
+        const results = await pipeline.exec();
+        if (results) {
+            influencers.forEach((influencer, index) => {
+                const [err, redisClicks] = results[index];
+                if (!err && redisClicks) {
+                    influencer.counterEntries += parseInt(redisClicks, 10);
+                }
+            });
+        }
+    }
+    catch (error) {
+        console.error("Erro ao buscar cliques no Redis para influenciadores:", error);
+    }
     return influencers;
 };
 exports.getInfluencers = getInfluencers;
@@ -84,6 +106,15 @@ const getInfluencerById = async (id, enterpriseId) => {
     });
     if (!influencer) {
         throw new appError_1.AppError("Influenciador não encontrado ou acesso negado", 404);
+    }
+    try {
+        const redisClicks = await redis_1.redis.get(`influencer_clicks:${enterpriseId}:${influencer.id}`);
+        if (redisClicks) {
+            influencer.counterEntries += parseInt(redisClicks, 10);
+        }
+    }
+    catch (error) {
+        console.error(`Erro ao buscar cliques no Redis para influenciador ${id}:`, error);
     }
     return influencer;
 };

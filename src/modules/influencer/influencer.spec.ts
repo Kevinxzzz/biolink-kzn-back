@@ -1,6 +1,20 @@
 import { createInfluencer, getInfluencers, getInfluencerById, updateInfluencer, deleteInfluencer } from "./influencer.service";
 import { prisma } from "../../shared/database/prisma";
+import { redis } from "../../shared/database/redis";
 import { createInfluencerZod, updateInfluencerZod } from "../../shared/zod/influencer.zod";
+
+jest.mock("../../shared/database/redis", () => {
+    const mPipeline = {
+        get: jest.fn(),
+        exec: jest.fn()
+    };
+    return {
+        redis: {
+            get: jest.fn(),
+            pipeline: jest.fn(() => mPipeline)
+        }
+    };
+});
 
 jest.mock("../../shared/database/prisma", () => ({
     prisma: {
@@ -108,7 +122,11 @@ describe("Influencer Module", () => {
         });
 
         it("4. deve listar influenciadores limitados ao tenant (enterpriseId)", async () => {
-            (prisma.influencer.findMany as jest.Mock).mockResolvedValue([{ id: "inf1" }]);
+            (prisma.influencer.findMany as jest.Mock).mockResolvedValue([{ id: "inf1", counterEntries: 10 }]);
+
+            // Mock pipeline exec
+            const mPipeline = redis.pipeline();
+            (mPipeline.exec as jest.Mock).mockResolvedValueOnce([[null, "5"]]);
 
             const result = await getInfluencers("ent1");
 
@@ -117,11 +135,24 @@ describe("Influencer Module", () => {
                 orderBy: { createAt: 'desc' },
                 select: expect.any(Object)
             });
+            expect(mPipeline.get).toHaveBeenCalledWith("influencer_clicks:ent1:inf1");
             expect(result.length).toBe(1);
+            expect(result[0].counterEntries).toBe(15);
+        });
+
+        it("4b. deve listar influenciadores considerando 0 quando não tem chave no redis", async () => {
+            (prisma.influencer.findMany as jest.Mock).mockResolvedValue([{ id: "inf1", counterEntries: 10 }]);
+
+            const mPipeline = redis.pipeline();
+            (mPipeline.exec as jest.Mock).mockResolvedValueOnce([[null, null]]);
+
+            const result = await getInfluencers("ent1");
+            expect(result[0].counterEntries).toBe(10);
         });
 
         it("5. deve buscar um influenciador pelo ID confirmando enterpriseId", async () => {
-            (prisma.influencer.findFirst as jest.Mock).mockResolvedValue({ id: "inf1" });
+            (prisma.influencer.findFirst as jest.Mock).mockResolvedValue({ id: "inf1", counterEntries: 100 });
+            (redis.get as jest.Mock).mockResolvedValueOnce("7");
 
             const result = await getInfluencerById("inf1", "ent1");
 
@@ -129,7 +160,18 @@ describe("Influencer Module", () => {
                 where: { id: "inf1", enterpriseId: "ent1" },
                 select: expect.any(Object)
             });
+            expect(redis.get).toHaveBeenCalledWith("influencer_clicks:ent1:inf1");
             expect(result?.id).toBe("inf1");
+            expect(result?.counterEntries).toBe(107);
+        });
+
+        it("5b. deve buscar um influenciador pelo ID ignorando falha no redis", async () => {
+            (prisma.influencer.findFirst as jest.Mock).mockResolvedValue({ id: "inf1", counterEntries: 100 });
+            (redis.get as jest.Mock).mockRejectedValueOnce(new Error("Redis error"));
+
+            const result = await getInfluencerById("inf1", "ent1");
+
+            expect(result?.counterEntries).toBe(100);
         });
 
         it("6. deve impedir de buscar influenciador de outro tenant e retornar 404", async () => {

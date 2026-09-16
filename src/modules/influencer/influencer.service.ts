@@ -1,4 +1,5 @@
 import { prisma } from "../../shared/database/prisma";
+import { redis } from "../../shared/database/redis";
 import { AppError } from "../../shared/errors/appError";
 import { CreateInfluencerInput, UpdateInfluencerInput } from "../../shared/zod/influencer.zod";
 
@@ -78,6 +79,31 @@ export const getInfluencers = async (enterpriseId: string) => {
         orderBy: { createAt: 'desc' },
         select: influencerSelect
     });
+
+    if (influencers.length === 0) {
+        return influencers;
+    }
+
+    try {
+        const pipeline = redis.pipeline();
+        influencers.forEach(influencer => {
+            pipeline.get(`influencer_clicks:${enterpriseId}:${influencer.id}`);
+        });
+
+        const results = await pipeline.exec();
+
+        if (results) {
+            influencers.forEach((influencer, index) => {
+                const [err, redisClicks] = results[index];
+                if (!err && redisClicks) {
+                    influencer.counterEntries += parseInt(redisClicks as string, 10);
+                }
+            });
+        }
+    } catch (error) {
+        console.error("Erro ao buscar cliques no Redis para influenciadores:", error);
+    }
+
     return influencers;
 };
 
@@ -89,6 +115,15 @@ export const getInfluencerById = async (id: string, enterpriseId: string) => {
 
     if (!influencer) {
         throw new AppError("Influenciador não encontrado ou acesso negado", 404);
+    }
+
+    try {
+        const redisClicks = await redis.get(`influencer_clicks:${enterpriseId}:${influencer.id}`);
+        if (redisClicks) {
+            influencer.counterEntries += parseInt(redisClicks, 10);
+        }
+    } catch (error) {
+        console.error(`Erro ao buscar cliques no Redis para influenciador ${id}:`, error);
     }
 
     return influencer;
