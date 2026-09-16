@@ -9,8 +9,8 @@ exports.createTokenInviteZod = zod_1.z.object({
 exports.registerViaTokenZod = zod_1.z.object({
     name: zod_1.z.string().min(3, "O nome deve ter no mínimo 3 caracteres"),
     email: zod_1.z.string().email("O e-mail informado é inválido"),
-    password: zod_1.z.string().min(8, "A senha deve ter no mínimo 8 caracteres"),
-    confirmPassword: zod_1.z.string().min(8, "A confirmação deve ter no mínimo 8 caracteres")
+    password: zod_1.z.string().min(6, "A senha deve ter no mínimo 6 caracteres"),
+    confirmPassword: zod_1.z.string().min(6, "A confirmação deve ter no mínimo 6 caracteres")
 }).refine(data => data.password === data.confirmPassword, {
     message: "As senhas não coincidem",
     path: ["confirmPassword"],

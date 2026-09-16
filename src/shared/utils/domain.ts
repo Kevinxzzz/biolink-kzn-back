@@ -25,6 +25,29 @@ export function extractDomain(req: Request): string | null {
 }
 
 /**
+ * Extrai a URL base (protocolo + host + porta) da requisição.
+ * Ideal para montar links públicos devolvidos pela API (ex: links de compartilhamento).
+ */
+export function extractBaseUrl(req: Request): string | null {
+    const origin = req.headers.origin;
+    if (origin) {
+        try {
+            const url = new URL(origin);
+            return `${url.protocol}//${url.host}`;
+        } catch {
+            // fallback
+        }
+    }
+
+    const host = req.get('host');
+    if (host) {
+        return `${req.protocol}://${host}`;
+    }
+
+    return null;
+}
+
+/**
  * Normaliza uma URL ou Host para extrair apenas o domínio puro.
  * 
  * @param url String contendo a URL, Origin ou Hostname

@@ -59,4 +59,43 @@ describe('Domain Utils', () => {
             expect((0, domain_1.extractDomain)(req)).toBeNull();
         });
     });
+    describe('extractBaseUrl', () => {
+        const mockRequest = (protocol, hostHeader, origin) => {
+            return {
+                protocol,
+                headers: {
+                    ...(origin ? { origin } : {})
+                },
+                get: (name) => {
+                    if (name.toLowerCase() === 'host')
+                        return hostHeader;
+                    return undefined;
+                }
+            };
+        };
+        it('deve usar o Origin se fornecido preservando protocolo e porta', () => {
+            const req = mockRequest('http', 'localhost:8080', 'http://localhost:8080');
+            expect((0, domain_1.extractBaseUrl)(req)).toBe('http://localhost:8080');
+        });
+        it('deve extrair https://kzngg.com corretamente', () => {
+            const req = mockRequest('https', 'kzngg.com', 'https://kzngg.com');
+            expect((0, domain_1.extractBaseUrl)(req)).toBe('https://kzngg.com');
+        });
+        it('deve extrair URL com porta customizada em https', () => {
+            const req = mockRequest('https', 'kzngg.com:8443', 'https://kzngg.com:8443');
+            expect((0, domain_1.extractBaseUrl)(req)).toBe('https://kzngg.com:8443');
+        });
+        it('deve ignorar Origin malformado e usar fallback (host)', () => {
+            const req = mockRequest('https', 'kzngg.com:8443', 'not-a-valid-url');
+            expect((0, domain_1.extractBaseUrl)(req)).toBe('https://kzngg.com:8443');
+        });
+        it('deve usar req.get(host) como fallback sem Origin', () => {
+            const req = mockRequest('http', 'localhost:8080');
+            expect((0, domain_1.extractBaseUrl)(req)).toBe('http://localhost:8080');
+        });
+        it('deve retornar null se nada for encontrado', () => {
+            const req = mockRequest('http');
+            expect((0, domain_1.extractBaseUrl)(req)).toBeNull();
+        });
+    });
 });
