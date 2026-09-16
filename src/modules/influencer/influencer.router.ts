@@ -8,14 +8,11 @@ const influencerRoutes = Router();
 
 influencerRoutes.get("/public/:slug", influencerController.getPublicBySlug);
 
-// Middleware aplicado a todas as rotas do módulo de influenciadores (exceto a pública acima)
 influencerRoutes.use(authenticate);
-influencerRoutes.use(hasRole(UserRole.OWNER, UserRole.ADMIN));
-
-influencerRoutes.post("/", influencerController.create);
-influencerRoutes.get("/", influencerController.list);
-influencerRoutes.get("/:id", influencerController.getById);
-influencerRoutes.patch("/:id", influencerController.update);
-influencerRoutes.delete("/:id", influencerController.remove);
+influencerRoutes.post("/", hasRole(UserRole.OWNER, UserRole.ADMIN), influencerController.create);
+influencerRoutes.get("/", hasRole(UserRole.OWNER, UserRole.ADMIN), influencerController.list);
+influencerRoutes.get("/:id", hasRole(UserRole.OWNER, UserRole.ADMIN), influencerController.getById);
+influencerRoutes.patch("/:id", hasRole(UserRole.OWNER), influencerController.update);
+influencerRoutes.delete("/:id", hasRole(UserRole.OWNER), influencerController.remove);
 
 export { influencerRoutes };

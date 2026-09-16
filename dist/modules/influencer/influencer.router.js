@@ -42,11 +42,9 @@ const influencerController = __importStar(require("./influencer.controller"));
 const influencerRoutes = (0, express_1.Router)();
 exports.influencerRoutes = influencerRoutes;
 influencerRoutes.get("/public/:slug", influencerController.getPublicBySlug);
-// Middleware aplicado a todas as rotas do módulo de influenciadores (exceto a pública acima)
 influencerRoutes.use(authenticate_1.authenticate);
-influencerRoutes.use((0, hasRole_1.hasRole)(client_1.UserRole.OWNER, client_1.UserRole.ADMIN));
-influencerRoutes.post("/", influencerController.create);
-influencerRoutes.get("/", influencerController.list);
-influencerRoutes.get("/:id", influencerController.getById);
-influencerRoutes.patch("/:id", influencerController.update);
-influencerRoutes.delete("/:id", influencerController.remove);
+influencerRoutes.post("/", (0, hasRole_1.hasRole)(client_1.UserRole.OWNER, client_1.UserRole.ADMIN), influencerController.create);
+influencerRoutes.get("/", (0, hasRole_1.hasRole)(client_1.UserRole.OWNER, client_1.UserRole.ADMIN), influencerController.list);
+influencerRoutes.get("/:id", (0, hasRole_1.hasRole)(client_1.UserRole.OWNER, client_1.UserRole.ADMIN), influencerController.getById);
+influencerRoutes.patch("/:id", (0, hasRole_1.hasRole)(client_1.UserRole.OWNER), influencerController.update);
+influencerRoutes.delete("/:id", (0, hasRole_1.hasRole)(client_1.UserRole.OWNER), influencerController.remove);

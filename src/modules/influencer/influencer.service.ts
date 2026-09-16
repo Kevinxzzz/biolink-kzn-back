@@ -18,22 +18,53 @@ const handleUniqueConstraintError = (error: any) => {
     }
     throw error;
 };
+const influencerSelect = {
+    id: true,
+    name: true,
+    slug: true,
+    email: true,
+    counterEntries: true,
+    personalUrl: true,
+    urlImgProfile: true,
+    imgKey: true
+};
 
-export const createInfluencer = async (enterpriseId: string, data: CreateInfluencerInput) => {
+export const createInfluencer = async (enterpriseId: string, data: CreateInfluencerInput, baseUrl: string) => {
+    const existingInfluencer = await prisma.influencer.findFirst({
+        where: { slug: data.slug, enterpriseId }
+    });
+
+    if (existingInfluencer) {
+        throw new AppError("Já existe um influenciador com este slug nesta empresa.", 409);
+    }
+
+    if (data.email) {
+        const existingEmail = await prisma.influencer.findFirst({
+            where: { email: data.email, enterpriseId }
+        });
+
+        if (existingEmail) {
+            throw new AppError("Já existe um influenciador com este e-mail nesta empresa.", 409);
+        }
+    }
+
     try {
+        const personalUrl = `${baseUrl}/${data.slug}`;
+
         const influencer = await prisma.influencer.create({
             data: {
                 name: data.name,
                 slug: data.slug,
                 email: data.email,
-                personalUrl: data.personalUrl,
+                personalUrl: personalUrl,
                 urlImgProfile: data.urlImgProfile,
                 imgKey: data.imgKey,
                 counterEntries: 0,
                 enterpriseId: enterpriseId,
                 createAt: new Date(),
                 updateAt: new Date(),
-            }
+            },
+            select: influencerSelect
         });
         return influencer;
     } catch (error) {
@@ -44,14 +75,16 @@ export const createInfluencer = async (enterpriseId: string, data: CreateInfluen
 export const getInfluencers = async (enterpriseId: string) => {
     const influencers = await prisma.influencer.findMany({
         where: { enterpriseId },
-        orderBy: { createAt: 'desc' }
+        orderBy: { createAt: 'desc' },
+        select: influencerSelect
     });
     return influencers;
 };
 
 export const getInfluencerById = async (id: string, enterpriseId: string) => {
     const influencer = await prisma.influencer.findFirst({
-        where: { id, enterpriseId }
+        where: { id, enterpriseId },
+        select: influencerSelect
     });
 
     if (!influencer) {
@@ -61,21 +94,52 @@ export const getInfluencerById = async (id: string, enterpriseId: string) => {
     return influencer;
 };
 
-export const updateInfluencer = async (id: string, enterpriseId: string, data: UpdateInfluencerInput) => {
-    await getInfluencerById(id, enterpriseId); // Valida se existe e pertence ao tenant
+export const updateInfluencer = async (id: string, enterpriseId: string, data: UpdateInfluencerInput, baseUrl: string) => {
+    const currentInfluencer = await getInfluencerById(id, enterpriseId); // Valida se existe e pertence ao tenant
+
+    if (data.slug && data.slug !== currentInfluencer.slug) {
+        const existingInfluencer = await prisma.influencer.findFirst({
+            where: {
+                slug: data.slug,
+                enterpriseId,
+                id: { not: id }
+            }
+        });
+
+        if (existingInfluencer && existingInfluencer.id !== id) {
+            throw new AppError("Já existe um influenciador com este slug nesta empresa.", 409);
+        }
+    }
+
+    if (data.email && data.email !== currentInfluencer.email) {
+        const existingEmail = await prisma.influencer.findFirst({
+            where: {
+                email: data.email,
+                enterpriseId,
+                id: { not: id }
+            }
+        });
+
+        if (existingEmail && existingEmail.id !== id) {
+            throw new AppError("Já existe um influenciador com este e-mail nesta empresa.", 409);
+        }
+    }
 
     try {
+        const personalUrl = data.slug ? `${baseUrl}/${data.slug}` : currentInfluencer.personalUrl;
+
         const influencer = await prisma.influencer.update({
             where: { id },
             data: {
                 name: data.name,
                 slug: data.slug,
                 email: data.email,
-                personalUrl: data.personalUrl,
+                personalUrl: personalUrl,
                 urlImgProfile: data.urlImgProfile,
                 imgKey: data.imgKey,
                 updateAt: new Date(),
-            }
+            },
+            select: influencerSelect
         });
         return influencer;
     } catch (error) {
@@ -92,6 +156,10 @@ export const deleteInfluencer = async (id: string, enterpriseId: string) => {
 };
 
 export const getPublicInfluencerBySlug = async (slug: string, domain: string) => {
+    if (!slug || typeof slug !== "string" || slug.trim() === "") {
+        throw new AppError("Slug inválido ou não informado.", 400);
+    }
+
     const app = await prisma.application.findUnique({
         where: { domain }
     });

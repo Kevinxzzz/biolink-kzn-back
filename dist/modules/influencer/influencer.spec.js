@@ -11,6 +11,12 @@ jest.mock("../../shared/database/prisma", () => ({
             findFirst: jest.fn(),
             update: jest.fn(),
             delete: jest.fn()
+        },
+        enterprise: {
+            findUnique: jest.fn()
+        },
+        application: {
+            findUnique: jest.fn()
         }
     }
 }));
@@ -22,46 +28,42 @@ describe("Influencer Module", () => {
         it("1. deve criar influenciador com sucesso (counterEntries = 0)", async () => {
             const mockInfluencer = { id: "inf1", name: "Fulano", slug: "fulano", counterEntries: 0 };
             prisma_1.prisma.influencer.create.mockResolvedValue(mockInfluencer);
+            prisma_1.prisma.enterprise.findUnique.mockResolvedValue({ application: { domain: "example.com" } });
             const result = await (0, influencer_service_1.createInfluencer)("ent1", {
                 name: "Fulano",
-                slug: "fulano",
-                personalUrl: "https://example.com"
-            });
+                slug: "fulano"
+            }, "http://localhost:8080");
             expect(prisma_1.prisma.influencer.create).toHaveBeenCalledWith({
                 data: expect.objectContaining({
                     name: "Fulano",
                     slug: "fulano",
-                    personalUrl: "https://example.com",
+                    personalUrl: "http://localhost:8080/fulano", // matching domain
                     counterEntries: 0,
                     enterpriseId: "ent1"
-                })
+                }),
+                select: expect.any(Object)
             });
             expect(result).toEqual(mockInfluencer);
+            expect(result).not.toHaveProperty("password");
+            expect(result).not.toHaveProperty("enterpriseId");
+            expect(result).not.toHaveProperty("createAt");
+            expect(result).not.toHaveProperty("updateAt");
         });
         it("2. deve impedir criação de influenciador com campos inválidos", () => {
             const result1 = influencer_zod_1.createInfluencerZod.safeParse({
                 name: "",
-                slug: "fulano",
-                personalUrl: "https://example.com"
+                slug: "fulano"
             });
             expect(result1.success).toBe(false);
             const result2 = influencer_zod_1.createInfluencerZod.safeParse({
                 name: "Fulano",
-                slug: "inválido!",
-                personalUrl: "https://example.com"
+                slug: "inválido!"
             });
             expect(result2.success).toBe(false);
-            const result3 = influencer_zod_1.createInfluencerZod.safeParse({
-                name: "Fulano",
-                slug: "fulano",
-                personalUrl: "invalid-url"
-            });
-            expect(result3.success).toBe(false);
             // Não aceita password
             const result4 = influencer_zod_1.createInfluencerZod.safeParse({
                 name: "Fulano",
                 slug: "fulano",
-                personalUrl: "https://example.com",
                 password: "123"
             });
             expect(result4.success).toBe(false);
@@ -73,11 +75,23 @@ describe("Influencer Module", () => {
             prisma_1.prisma.influencer.create.mockRejectedValue(p2002Error);
             await expect((0, influencer_service_1.createInfluencer)("ent1", {
                 name: "Fulano",
-                slug: "fulano",
-                personalUrl: "https://example.com"
-            })).rejects.toMatchObject({
+                slug: "fulano"
+            }, "http://localhost:8080")).rejects.toMatchObject({
                 statusCode: 409,
                 message: "Já existe um influenciador com este slug nesta empresa."
+            });
+        });
+        it("3b. deve retornar erro específico 409 se violar unicidade de email", async () => {
+            const p2002Error = new Error("Unique constraint");
+            p2002Error.code = "P2002";
+            p2002Error.meta = { target: ["email", "enterprise_id"] };
+            prisma_1.prisma.influencer.create.mockRejectedValue(p2002Error);
+            await expect((0, influencer_service_1.createInfluencer)("ent1", {
+                name: "Fulano",
+                slug: "fulano"
+            }, "http://localhost:8080")).rejects.toMatchObject({
+                statusCode: 409,
+                message: "Já existe um influenciador com este e-mail nesta empresa."
             });
         });
         it("4. deve listar influenciadores limitados ao tenant (enterpriseId)", async () => {
@@ -85,7 +99,8 @@ describe("Influencer Module", () => {
             const result = await (0, influencer_service_1.getInfluencers)("ent1");
             expect(prisma_1.prisma.influencer.findMany).toHaveBeenCalledWith({
                 where: { enterpriseId: "ent1" },
-                orderBy: { createAt: 'desc' }
+                orderBy: { createAt: 'desc' },
+                select: expect.any(Object)
             });
             expect(result.length).toBe(1);
         });
@@ -93,7 +108,8 @@ describe("Influencer Module", () => {
             prisma_1.prisma.influencer.findFirst.mockResolvedValue({ id: "inf1" });
             const result = await (0, influencer_service_1.getInfluencerById)("inf1", "ent1");
             expect(prisma_1.prisma.influencer.findFirst).toHaveBeenCalledWith({
-                where: { id: "inf1", enterpriseId: "ent1" }
+                where: { id: "inf1", enterpriseId: "ent1" },
+                select: expect.any(Object)
             });
             expect(result?.id).toBe("inf1");
         });
@@ -106,19 +122,72 @@ describe("Influencer Module", () => {
         });
         it("7. deve atualizar influenciador com sucesso (valida acesso ao tenant)", async () => {
             prisma_1.prisma.influencer.findFirst.mockResolvedValue({ id: "inf1" });
+            prisma_1.prisma.enterprise.findUnique.mockResolvedValue({ application: { domain: "example.com" } });
             prisma_1.prisma.influencer.update.mockResolvedValue({ id: "inf1", name: "Ciclano" });
-            const result = await (0, influencer_service_1.updateInfluencer)("inf1", "ent1", { name: "Ciclano" });
+            const result = await (0, influencer_service_1.updateInfluencer)("inf1", "ent1", { name: "Ciclano" }, "http://localhost:8080");
             expect(prisma_1.prisma.influencer.update).toHaveBeenCalledWith({
                 where: { id: "inf1" },
                 data: expect.objectContaining({
                     name: "Ciclano"
-                })
+                }),
+                select: expect.any(Object)
             });
             expect(result?.name).toBe("Ciclano");
         });
+        it("7b. deve retornar erro 409 ao tentar UPDATE com slug de outro influencer", async () => {
+            prisma_1.prisma.influencer.findFirst.mockResolvedValue({ id: "inf1", slug: "fulano" });
+            const p2002Error = new Error("Unique constraint");
+            p2002Error.code = "P2002";
+            p2002Error.meta = { target: ["slug", "enterprise_id"] };
+            prisma_1.prisma.influencer.update.mockRejectedValue(p2002Error);
+            await expect((0, influencer_service_1.updateInfluencer)("inf1", "ent1", { name: "Ciclano", slug: "kzn3" }, "http://localhost:8080")).rejects.toMatchObject({
+                statusCode: 409,
+                message: "Já existe um influenciador com este slug nesta empresa."
+            });
+        });
+        it("7c. deve retornar erro 409 preventivo se findFirst encontrar slug duplicado de outro influencer no update", async () => {
+            prisma_1.prisma.influencer.findFirst
+                .mockResolvedValueOnce({ id: "inf1", slug: "fulano" }) // getInfluencerById
+                .mockResolvedValueOnce({ id: "inf2", slug: "outro-slug" }); // findFirst slug duplicado
+            await expect((0, influencer_service_1.updateInfluencer)("inf1", "ent1", { slug: "outro-slug" }, "http://localhost:8080")).rejects.toMatchObject({
+                statusCode: 409,
+                message: "Já existe um influenciador com este slug nesta empresa."
+            });
+            expect(prisma_1.prisma.influencer.update).not.toHaveBeenCalled();
+        });
+        it("7d. deve retornar erro 409 preventivo se findFirst encontrar email duplicado de outro influencer no update", async () => {
+            prisma_1.prisma.influencer.findFirst
+                .mockResolvedValueOnce({ id: "inf1", slug: "fulano", email: "fulano@test.com" }) // getInfluencerById
+                .mockResolvedValueOnce({ id: "inf2", email: "outro@test.com" }); // findFirst email duplicado
+            await expect((0, influencer_service_1.updateInfluencer)("inf1", "ent1", { email: "outro@test.com" }, "http://localhost:8080")).rejects.toMatchObject({
+                statusCode: 409,
+                message: "Já existe um influenciador com este e-mail nesta empresa."
+            });
+            expect(prisma_1.prisma.influencer.update).not.toHaveBeenCalled();
+        });
+        it("7e. deve atualizar slug e recalcular personalUrl preservando o padrão baseUrl + slug", async () => {
+            prisma_1.prisma.influencer.findFirst
+                .mockResolvedValueOnce({ id: "inf1", slug: "antigo-slug", personalUrl: "http://localhost:8080/antigo-slug" }) // getInfluencerById
+                .mockResolvedValueOnce(null); // findFirst slug duplicado (nenhum conflito)
+            prisma_1.prisma.influencer.update.mockResolvedValue({
+                id: "inf1",
+                slug: "novo-slug",
+                personalUrl: "http://localhost:8080/novo-slug"
+            });
+            const result = await (0, influencer_service_1.updateInfluencer)("inf1", "ent1", { slug: "novo-slug" }, "http://localhost:8080");
+            expect(prisma_1.prisma.influencer.update).toHaveBeenCalledWith({
+                where: { id: "inf1" },
+                data: expect.objectContaining({
+                    slug: "novo-slug",
+                    personalUrl: "http://localhost:8080/novo-slug"
+                }),
+                select: expect.any(Object)
+            });
+            expect(result?.slug).toBe("novo-slug");
+        });
         it("8. deve impedir atualização de influenciador de outro tenant e retornar 404", async () => {
             prisma_1.prisma.influencer.findFirst.mockResolvedValue(null); // findById falha
-            await expect((0, influencer_service_1.updateInfluencer)("inf1", "ent2", { name: "Novo" })).rejects.toMatchObject({
+            await expect((0, influencer_service_1.updateInfluencer)("inf1", "ent2", { name: "Novo" }, "example.com")).rejects.toMatchObject({
                 statusCode: 404,
                 message: "Influenciador não encontrado ou acesso negado"
             });
