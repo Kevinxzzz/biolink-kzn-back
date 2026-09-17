@@ -50,6 +50,9 @@ describe("CronIncrement Module (Etapa 2) - Consolidação", () => {
             },
             influencerCountDailyClicks: {
                 upsert: jest.fn(),
+            },
+            urlCountDailyClicks: {
+                upsert: jest.fn(),
             }
         };
 
@@ -63,7 +66,7 @@ describe("CronIncrement Module (Etapa 2) - Consolidação", () => {
     it("1/2/3/4. deve consolidar os cliques corretamente, atualizando o link ativo e o count diário (upsert)", async () => {
         // Mock SCAN to return 1 key, then cursor "0"
         (redis.scan as jest.Mock).mockResolvedValueOnce(["0", ["clicks:ent1:cat1"]]);
-        
+
         // Mock active link
         mockTx.enterpriseUrl.findFirst.mockResolvedValue({ id: "link-ativo-1" });
         // Mock redis GET
@@ -101,7 +104,7 @@ describe("CronIncrement Module (Etapa 2) - Consolidação", () => {
 
     it("5/6. deve isolar múltiplas empresas e categorias corretamente", async () => {
         (redis.scan as jest.Mock).mockResolvedValueOnce(["0", ["clicks:entA:catA", "clicks:entB:catB"]]);
-        
+
         mockTx.enterpriseUrl.findFirst
             .mockResolvedValueOnce({ id: "linkA" })
             .mockResolvedValueOnce({ id: "linkB" });
@@ -113,13 +116,13 @@ describe("CronIncrement Module (Etapa 2) - Consolidação", () => {
         await consolidateClicks();
 
         expect(mockTx.enterpriseUrl.update).toHaveBeenCalledTimes(2);
-        
+
         // Check entA
         expect(mockTx.enterpriseUrl.update).toHaveBeenNthCalledWith(1, {
             where: { id: "linkA" },
             data: expect.objectContaining({ countClicks: { increment: 10 } })
         });
-        
+
         // Check entB
         expect(mockTx.enterpriseUrl.update).toHaveBeenNthCalledWith(2, {
             where: { id: "linkB" },
@@ -133,7 +136,7 @@ describe("CronIncrement Module (Etapa 2) - Consolidação", () => {
 
     it("7. NÃO deve perder cliques (não chamar lua script) caso falhe a persistência no PostgreSQL", async () => {
         (redis.scan as jest.Mock).mockResolvedValueOnce(["0", ["clicks:ent1:cat1"]]);
-        
+
         mockTx.enterpriseUrl.findFirst.mockResolvedValue({ id: "link1" });
         (redis.get as jest.Mock).mockResolvedValue("15");
 
@@ -166,9 +169,9 @@ describe("CronIncrement Module (Etapa 2) - Consolidação", () => {
 
     it("9. NÃO deve processar contador inexistente ou <= 0", async () => {
         (redis.scan as jest.Mock).mockResolvedValueOnce(["0", ["clicks:ent1:cat1", "clicks:ent1:cat2"]]);
-        
+
         mockTx.enterpriseUrl.findFirst.mockResolvedValue({ id: "link1" });
-        
+
         (redis.get as jest.Mock)
             .mockResolvedValueOnce("0")
             .mockResolvedValueOnce(null);
@@ -182,10 +185,10 @@ describe("CronIncrement Module (Etapa 2) - Consolidação", () => {
 
     it("11. NÃO deve processar quando não há link ativo na categoria", async () => {
         (redis.scan as jest.Mock).mockResolvedValueOnce(["0", ["clicks:ent1:cat1"]]);
-        
+
         // Nenhuma rota ativa
         mockTx.enterpriseUrl.findFirst.mockResolvedValue(null);
-        
+
         await consolidateClicks();
 
         // O redis.get não deve sequer ser chamado
@@ -265,12 +268,12 @@ describe("CronIncrement Module (Etapa 2) - Consolidação", () => {
 
         it("Caso 4 e 6 - Múltiplas chaves processadas de forma isolada, erro em uma não impede a outra", async () => {
             (redis.scan as jest.Mock).mockResolvedValueOnce(["0", ["influencer_clicks:E1:I1", "influencer_clicks:E2:I2"]]);
-            
+
             // Primeira iteração do tx quebra
             (prisma.$transaction as jest.Mock)
                 .mockImplementationOnce(async () => { throw new Error("Erro isolado na chave I1"); })
                 .mockImplementationOnce(async (cb) => { return await cb(mockTx); });
-            
+
             mockTx.influencer.findFirst.mockResolvedValue({ id: "I2" }); // pra segunda iteracao
             (redis.get as jest.Mock).mockResolvedValue("30");
             (redis.eval as jest.Mock).mockResolvedValue(1);

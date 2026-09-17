@@ -188,9 +188,25 @@ model enterpriseUrl {
   enterprise         enterprise         @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
   enterpriseCategory enterpriseCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   urlSchedule        urlSchedule[]
+  urlCountDailyClicks urlCountDailyClicks[]
 
   @@unique([url, enterpriseId])
   @@map("enterprise_url")
+}
+
+model urlCountDailyClicks {
+  id              String   @id @default(uuid()) @db.Uuid
+  dailyClicks     Int      @map("daily_clicks")
+  referenceDate   DateTime @map("reference_date") @db.Date
+  enterpriseUrlId String   @map("enterprise_url_id") @db.Uuid
+  enterpriseId    String   @map("enterprise_id") @db.Uuid
+  createAt        DateTime @map("create_at")
+  updateAt        DateTime @map("update_at")
+
+  enterpriseUrl enterpriseUrl @relation(fields: [enterpriseUrlId], references: [id], onDelete: Cascade)
+
+  @@unique([enterpriseUrlId, referenceDate])
+  @@map("url_count_daily_clicks")
 }
 
 model urlSchedule {

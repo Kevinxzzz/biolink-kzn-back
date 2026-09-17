@@ -72,6 +72,11 @@ const processTimerRotations = async () => {
                                 create: { enterpriseId: currentActive.enterpriseId, referenceDate, dailyClicks: pending, createAt: new Date(), updateAt: new Date() },
                                 update: { dailyClicks: { increment: pending }, updateAt: new Date() }
                             });
+                            await tx.urlCountDailyClicks.upsert({
+                                where: { enterpriseUrlId_referenceDate: { enterpriseUrlId: currentActive.id, referenceDate } },
+                                create: { enterpriseUrlId: currentActive.id, enterpriseId: currentActive.enterpriseId, referenceDate, dailyClicks: pending, createAt: new Date(), updateAt: new Date() },
+                                update: { dailyClicks: { increment: pending }, updateAt: new Date() }
+                            });
                             compensatedAmount = pending;
                             const evalResult = await redis_1.redis.eval(DECR_LUA_SCRIPT, 1, redisKey, pending);
                             if (evalResult === 0)
@@ -152,6 +157,11 @@ const processScheduleRotations = async () => {
                             await tx.enterpriseCountDailyClicks.upsert({
                                 where: { enterpriseId_referenceDate: { enterpriseId: currentActive.enterpriseId, referenceDate } },
                                 create: { enterpriseId: currentActive.enterpriseId, referenceDate, dailyClicks: pending, createAt: new Date(), updateAt: new Date() },
+                                update: { dailyClicks: { increment: pending }, updateAt: new Date() }
+                            });
+                            await tx.urlCountDailyClicks.upsert({
+                                where: { enterpriseUrlId_referenceDate: { enterpriseUrlId: currentActive.id, referenceDate } },
+                                create: { enterpriseUrlId: currentActive.id, enterpriseId: currentActive.enterpriseId, referenceDate, dailyClicks: pending, createAt: new Date(), updateAt: new Date() },
                                 update: { dailyClicks: { increment: pending }, updateAt: new Date() }
                             });
                             compensatedAmount = pending;

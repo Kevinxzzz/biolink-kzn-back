@@ -75,6 +75,26 @@ const consolidateClicks = async () => {
                                 updateAt: new Date()
                             }
                         });
+                        await tx.urlCountDailyClicks.upsert({
+                            where: {
+                                enterpriseUrlId_referenceDate: {
+                                    enterpriseUrlId: activeLink.id,
+                                    referenceDate
+                                }
+                            },
+                            create: {
+                                enterpriseUrlId: activeLink.id,
+                                enterpriseId,
+                                referenceDate,
+                                dailyClicks: redisCount,
+                                createAt: new Date(),
+                                updateAt: new Date()
+                            },
+                            update: {
+                                dailyClicks: { increment: redisCount },
+                                updateAt: new Date()
+                            }
+                        });
                         // Decremento no Redis (Dentro do Lock do PG)
                         compensatedAmount = redisCount;
                         const evalResult = await redis_1.redis.eval(DECR_LUA_SCRIPT, 1, key, redisCount);

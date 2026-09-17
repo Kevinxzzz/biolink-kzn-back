@@ -177,6 +177,11 @@ const activateLink = async (id, enterpriseId) => {
                         create: { enterpriseId, referenceDate, dailyClicks: pending, createAt: new Date(), updateAt: new Date() },
                         update: { dailyClicks: { increment: pending }, updateAt: new Date() }
                     });
+                    await tx.urlCountDailyClicks.upsert({
+                        where: { enterpriseUrlId_referenceDate: { enterpriseUrlId: currentActive.id, referenceDate } },
+                        create: { enterpriseUrlId: currentActive.id, enterpriseId, referenceDate, dailyClicks: pending, createAt: new Date(), updateAt: new Date() },
+                        update: { dailyClicks: { increment: pending }, updateAt: new Date() }
+                    });
                     compensatedAmount = pending;
                     const evalResult = await redis_1.redis.eval(DECR_LUA_SCRIPT, 1, categoryKey, pending);
                     if (evalResult === 0)

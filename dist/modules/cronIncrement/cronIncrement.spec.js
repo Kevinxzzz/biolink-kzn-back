@@ -48,6 +48,9 @@ describe("CronIncrement Module (Etapa 2) - Consolidação", () => {
             },
             influencerCountDailyClicks: {
                 upsert: jest.fn(),
+            },
+            urlCountDailyClicks: {
+                upsert: jest.fn(),
             }
         };
         prisma_1.prisma.$transaction.mockImplementation(async (cb) => {
