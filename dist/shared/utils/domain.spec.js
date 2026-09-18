@@ -48,6 +48,18 @@ describe('Domain Utils', () => {
             });
             expect((0, domain_1.extractDomain)(req)).toBe('kzn.com');
         });
+        it('deve usar x-forwarded-host se fornecido e Origin ausente', () => {
+            const req = mockRequest('localhost', {
+                'x-forwarded-host': 'prod-kzn.com'
+            });
+            expect((0, domain_1.extractDomain)(req)).toBe('prod-kzn.com');
+        });
+        it('deve extrair o primeiro host se x-forwarded-host contiver multiplos valores', () => {
+            const req = mockRequest('localhost', {
+                'x-forwarded-host': 'client-domain.com, proxy1.com'
+            });
+            expect((0, domain_1.extractDomain)(req)).toBe('client-domain.com');
+        });
         it('deve usar req.hostname como fallback se os headers nao existirem', () => {
             expect((0, domain_1.extractDomain)(mockRequest('alecio.com'))).toBe('alecio.com');
             expect((0, domain_1.extractDomain)(mockRequest('kzn.com'))).toBe('kzn.com');

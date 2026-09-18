@@ -20,6 +20,12 @@ function extractDomain(req) {
             // Ignora a URL malformada e segue para o fallback
         }
     }
+    const forwardedHost = req.headers['x-forwarded-host'];
+    if (forwardedHost) {
+        // x-forwarded-host pode ser uma string separada por vírgula se houver múltiplos proxies
+        const firstHost = (typeof forwardedHost === 'string' ? forwardedHost : forwardedHost[0]).split(',')[0];
+        return normalizeDomain(firstHost);
+    }
     if (req.hostname) {
         return normalizeDomain(req.hostname);
     }
