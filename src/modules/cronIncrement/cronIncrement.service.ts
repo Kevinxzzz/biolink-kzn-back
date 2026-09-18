@@ -21,7 +21,7 @@ export const consolidateClicks = async () => {
         // MATCH clicks:*:* - as chaves são clicks:enterpriseId:categoryId
         const [nextCursor, keys] = await redis.scan(cursor, "MATCH", "clicks:*:*", "COUNT", "100");
         cursor = nextCursor;
-        
+
         // Processa as chaves recebidas neste lote imediatamente
         for (const key of keys) {
             try {
@@ -86,6 +86,27 @@ export const consolidateClicks = async () => {
                             }
                         });
 
+                        await tx.urlCountDailyClicks.upsert({
+                            where: {
+                                enterpriseUrlId_referenceDate: {
+                                    enterpriseUrlId: activeLink.id,
+                                    referenceDate
+                                }
+                            },
+                            create: {
+                                enterpriseUrlId: activeLink.id,
+                                enterpriseId,
+                                referenceDate,
+                                dailyClicks: redisCount,
+                                createAt: new Date(),
+                                updateAt: new Date()
+                            },
+                            update: {
+                                dailyClicks: { increment: redisCount },
+                                updateAt: new Date()
+                            }
+                        });
+
                         // Decremento no Redis (Dentro do Lock do PG)
                         compensatedAmount = redisCount;
                         const evalResult = await redis.eval(DECR_LUA_SCRIPT, 1, key, redisCount);
@@ -114,7 +135,7 @@ export const consolidateInfluencerClicks = async () => {
         // MATCH influencer_clicks:*:* - as chaves são influencer_clicks:enterpriseId:influencerId
         const [nextCursor, keys] = await redis.scan(cursor, "MATCH", "influencer_clicks:*:*", "COUNT", "100");
         cursor = nextCursor;
-        
+
         for (const key of keys) {
             try {
                 const parts = key.split(":");
@@ -129,12 +150,12 @@ export const consolidateInfluencerClicks = async () => {
                         const existingInfluencer = await tx.influencer.findFirst({
                             where: { id: influencerId, enterpriseId }
                         });
-                        
+
                         if (!existingInfluencer) {
                             // Regra: influencer não existe (deletado ou inválido)
                             // Removemos a chave órfã para não reprocessá-la eternamente.
                             await redis.del(key);
-                            return; 
+                            return;
                         }
 
                         // Lock do Influenciador

@@ -53,6 +53,12 @@ jest.mock("../../shared/database/prisma", () => ({
         enterpriseUrl: {
             findFirst: jest.fn(),
             update: jest.fn(),
+        },
+        enterpriseCountDailyClicks: {
+            upsert: jest.fn(),
+        },
+        urlCountDailyClicks: {
+            upsert: jest.fn(),
         }
     }
 }));
@@ -82,6 +88,12 @@ describe("Temporal Rotation Module (Etapa 3) - TIMER e SCHEDULE", () => {
             enterpriseUrl: {
                 findFirst: jest.fn(),
                 update: jest.fn(),
+            },
+            enterpriseCountDailyClicks: {
+                upsert: jest.fn(),
+            },
+            urlCountDailyClicks: {
+                upsert: jest.fn(),
             }
         };
         prisma_1.prisma.$transaction.mockImplementation(async (cb) => {
@@ -136,6 +148,74 @@ describe("Temporal Rotation Module (Etapa 3) - TIMER e SCHEDULE", () => {
             expect(mockTx.categoryRotation.update).toHaveBeenCalledWith({
                 where: { categoryId: "cat1" },
                 data: expect.objectContaining({ timerStartedAt: expect.any(Date) })
+            });
+        });
+        it("Teste de Atribuição e Limpeza: Link A recebe pendentes e Link B é ativado puro", async () => {
+            const pastTimer = new Date(new Date().getTime() - 20 * 60000);
+            prisma_1.prisma.categoryRotation.findMany.mockResolvedValueOnce([{
+                    categoryId: "cat1",
+                    toggleType: "TIMER",
+                    timerInMinutes: 10,
+                    timerStartedAt: pastTimer
+                }]);
+            prisma_1.prisma.urlSchedule.findMany.mockResolvedValueOnce([]);
+            mockTx.categoryRotation.findUnique.mockResolvedValueOnce({
+                categoryId: "cat1",
+                toggleType: "TIMER",
+                timerInMinutes: 10,
+                timerStartedAt: pastTimer
+            });
+            mockTx.enterpriseUrl.findFirst.mockResolvedValueOnce({ id: "link-a", enterpriseId: "ent1" });
+            linkUtils.getNextEligibleLink.mockResolvedValueOnce({ id: "link-b" });
+            const { redis } = require("../../shared/database/redis");
+            redis.get.mockResolvedValueOnce("50");
+            redis.eval.mockResolvedValueOnce(1); // decrementou com sucesso
+            await (0, cronTemporalRotation_service_1.processTemporalRotations)();
+            expect(mockTx.enterpriseUrl.update).toHaveBeenCalledWith({
+                where: { id: "link-a" },
+                data: expect.objectContaining({ active: false, countClicks: { increment: 50 } })
+            });
+            expect(mockTx.urlCountDailyClicks.upsert).toHaveBeenCalledWith({
+                where: expect.any(Object),
+                create: expect.objectContaining({ enterpriseUrlId: "link-a", dailyClicks: 50 }),
+                update: expect.objectContaining({ dailyClicks: { increment: 50 } })
+            });
+            expect(redis.eval).toHaveBeenCalledWith(expect.any(String), 1, "clicks:ent1:cat1", 50);
+            expect(mockTx.enterpriseUrl.update).toHaveBeenCalledWith({
+                where: { id: "link-b" },
+                data: expect.objectContaining({ active: true })
+            });
+        });
+        it("Teste de Proteção contra Falhas: Falha no BD cancela e Redis mantém", async () => {
+            const pastTimer = new Date(new Date().getTime() - 20 * 60000);
+            prisma_1.prisma.categoryRotation.findMany.mockResolvedValueOnce([{
+                    categoryId: "cat1",
+                    toggleType: "TIMER",
+                    timerInMinutes: 10,
+                    timerStartedAt: pastTimer
+                }]);
+            prisma_1.prisma.urlSchedule.findMany.mockResolvedValueOnce([]);
+            mockTx.categoryRotation.findUnique.mockResolvedValueOnce({
+                categoryId: "cat1",
+                toggleType: "TIMER",
+                timerInMinutes: 10,
+                timerStartedAt: pastTimer
+            });
+            mockTx.enterpriseUrl.findFirst.mockResolvedValueOnce({ id: "link-a", enterpriseId: "ent1" });
+            linkUtils.getNextEligibleLink.mockResolvedValueOnce({ id: "link-b" });
+            const { redis } = require("../../shared/database/redis");
+            redis.get.mockResolvedValueOnce("50");
+            // Simula erro no banco DURANTE a consolidação do Link A
+            mockTx.urlCountDailyClicks.upsert.mockRejectedValueOnce(new Error("Erro Banco"));
+            await (0, cronTemporalRotation_service_1.processTemporalRotations)();
+            // Como o banco falhou ANTES do redis.eval ser chamado, o redis.eval não deve ter rodado.
+            // E o redis.incrby tbm não roda pois compensatedAmount = 0
+            expect(redis.eval).not.toHaveBeenCalled();
+            expect(redis.incrby).not.toHaveBeenCalled();
+            // O update ativando o Link B não deve ter acontecido, preservando a regra
+            expect(mockTx.enterpriseUrl.update).not.toHaveBeenCalledWith({
+                where: { id: "link-b" },
+                data: expect.objectContaining({ active: true })
             });
         });
         it("NÃO deve resetar o timer se não houver próximo link elegível", async () => {

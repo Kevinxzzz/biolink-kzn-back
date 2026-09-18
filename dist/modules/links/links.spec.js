@@ -30,6 +30,9 @@ jest.mock("../../shared/database/prisma", () => ({
         enterpriseCountDailyClicks: {
             upsert: jest.fn()
         },
+        urlCountDailyClicks: {
+            upsert: jest.fn()
+        },
         influencer: {
             findFirst: jest.fn()
         }
@@ -61,6 +64,9 @@ describe("Links Module", () => {
                 updateMany: jest.fn()
             },
             enterpriseCountDailyClicks: {
+                upsert: jest.fn()
+            },
+            urlCountDailyClicks: {
                 upsert: jest.fn()
             }
         };

@@ -77,7 +77,13 @@ const processTimerRotations = async () => {
                                 create: { enterpriseId: currentActive.enterpriseId, referenceDate, dailyClicks: pending, createAt: new Date(), updateAt: new Date() },
                                 update: { dailyClicks: { increment: pending }, updateAt: new Date() }
                             });
-                            
+
+                            await tx.urlCountDailyClicks.upsert({
+                                where: { enterpriseUrlId_referenceDate: { enterpriseUrlId: currentActive.id, referenceDate } },
+                                create: { enterpriseUrlId: currentActive.id, enterpriseId: currentActive.enterpriseId, referenceDate, dailyClicks: pending, createAt: new Date(), updateAt: new Date() },
+                                update: { dailyClicks: { increment: pending }, updateAt: new Date() }
+                            });
+
                             compensatedAmount = pending;
                             const evalResult = await redis.eval(DECR_LUA_SCRIPT, 1, redisKey, pending);
                             if (evalResult === 0) compensatedAmount = 0;
@@ -149,59 +155,65 @@ const processScheduleRotations = async () => {
 
                     // Se houver um link ativo e ele for DIFERENTE do agendado, desativa o atual e ativa o agendado.
                     // O agendamento ignora inRotationPool (conforme regra de negócio).
-                        if (currentActive && currentActive.id !== schedule.enterpriseUrlId) {
-                            // Consolidar cliques do link antigo antes de trocar
-                            const redisKey = `clicks:${currentActive.enterpriseId}:${categoryId}`;
-                            const redisCountStr = await redis.get(redisKey);
-                            const pending = redisCountStr ? parseInt(redisCountStr, 10) : 0;
-                            
-                            if (pending > 0) {
-                                await tx.enterpriseUrl.update({
-                                    where: { id: currentActive.id },
-                                    data: { countClicks: { increment: pending }, active: false, updateAt: new Date() }
-                                });
+                    if (currentActive && currentActive.id !== schedule.enterpriseUrlId) {
+                        // Consolidar cliques do link antigo antes de trocar
+                        const redisKey = `clicks:${currentActive.enterpriseId}:${categoryId}`;
+                        const redisCountStr = await redis.get(redisKey);
+                        const pending = redisCountStr ? parseInt(redisCountStr, 10) : 0;
 
-                                const referenceDate = getTodayBRTReferenceDate();
-                                await tx.enterpriseCountDailyClicks.upsert({
-                                    where: { enterpriseId_referenceDate: { enterpriseId: currentActive.enterpriseId, referenceDate } },
-                                    create: { enterpriseId: currentActive.enterpriseId, referenceDate, dailyClicks: pending, createAt: new Date(), updateAt: new Date() },
-                                    update: { dailyClicks: { increment: pending }, updateAt: new Date() }
-                                });
-                                
-                                compensatedAmount = pending;
-                                const evalResult = await redis.eval(DECR_LUA_SCRIPT, 1, redisKey, pending);
-                                if (evalResult === 0) compensatedAmount = 0;
-                            } else {
-                                await tx.enterpriseUrl.update({
-                                    where: { id: currentActive.id },
-                                    data: { active: false, updateAt: new Date() }
-                                });
-                            }
-
+                        if (pending > 0) {
                             await tx.enterpriseUrl.update({
-                                where: { id: schedule.enterpriseUrlId },
-                                data: { active: true, updateAt: new Date() }
+                                where: { id: currentActive.id },
+                                data: { countClicks: { increment: pending }, active: false, updateAt: new Date() }
                             });
-                        } else if (!currentActive) {
-                            // Edge case: nenhum link estava ativo, simplesmente ativamos o alvo
+
+                            const referenceDate = getTodayBRTReferenceDate();
+                            await tx.enterpriseCountDailyClicks.upsert({
+                                where: { enterpriseId_referenceDate: { enterpriseId: currentActive.enterpriseId, referenceDate } },
+                                create: { enterpriseId: currentActive.enterpriseId, referenceDate, dailyClicks: pending, createAt: new Date(), updateAt: new Date() },
+                                update: { dailyClicks: { increment: pending }, updateAt: new Date() }
+                            });
+
+                            await tx.urlCountDailyClicks.upsert({
+                                where: { enterpriseUrlId_referenceDate: { enterpriseUrlId: currentActive.id, referenceDate } },
+                                create: { enterpriseUrlId: currentActive.id, enterpriseId: currentActive.enterpriseId, referenceDate, dailyClicks: pending, createAt: new Date(), updateAt: new Date() },
+                                update: { dailyClicks: { increment: pending }, updateAt: new Date() }
+                            });
+
+                            compensatedAmount = pending;
+                            const evalResult = await redis.eval(DECR_LUA_SCRIPT, 1, redisKey, pending);
+                            if (evalResult === 0) compensatedAmount = 0;
+                        } else {
                             await tx.enterpriseUrl.update({
-                                where: { id: schedule.enterpriseUrlId },
-                                data: { active: true, updateAt: new Date() }
+                                where: { id: currentActive.id },
+                                data: { active: false, updateAt: new Date() }
                             });
                         }
 
-                        // Marca o schedule como inativo (concluído)
-                        await tx.urlSchedule.update({
-                            where: { id: schedule.id },
-                            data: { active: false, updateAt: new Date() }
+                        await tx.enterpriseUrl.update({
+                            where: { id: schedule.enterpriseUrlId },
+                            data: { active: true, updateAt: new Date() }
+                        });
+                    } else if (!currentActive) {
+                        // Edge case: nenhum link estava ativo, simplesmente ativamos o alvo
+                        await tx.enterpriseUrl.update({
+                            where: { id: schedule.enterpriseUrlId },
+                            data: { active: true, updateAt: new Date() }
                         });
                     }
-                });
-            } catch (err) {
-                console.error(`Erro ao processar SCHEDULES da categoria ${categoryId}:`, err);
-                if (compensatedAmount > 0) {
-                    await redis.incrby(`clicks:${categorySchedules[0]?.enterpriseUrl?.enterpriseId}:${categoryId}`, compensatedAmount);
+
+                    // Marca o schedule como inativo (concluído)
+                    await tx.urlSchedule.update({
+                        where: { id: schedule.id },
+                        data: { active: false, updateAt: new Date() }
+                    });
                 }
+            });
+        } catch (err) {
+            console.error(`Erro ao processar SCHEDULES da categoria ${categoryId}:`, err);
+            if (compensatedAmount > 0) {
+                await redis.incrby(`clicks:${categorySchedules[0]?.enterpriseUrl?.enterpriseId}:${categoryId}`, compensatedAmount);
             }
+        }
     }
 };
