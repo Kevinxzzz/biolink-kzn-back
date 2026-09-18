@@ -162,14 +162,11 @@ export const getAuthenticatedUser = async (user: import("../../shared/types/toke
                 },
                 enterprise: {
                     select: {
-                        id: true,
                         name: true,
                         email: true,
                         phoneNumber: true,
                         application: {
                             select: {
-                                id: true,
-                                name: true,
                                 domain: true
                             }
                         }
@@ -183,10 +180,8 @@ export const getAuthenticatedUser = async (user: import("../../shared/types/toke
         }
 
         return {
-            id: userFound.id,
             name: userFound.name,
             email: userFound.email,
-            accountType: "USER" as const,
             role: userFound.role.role,
             enterprise: userFound.enterprise ? {
                 name: userFound.enterprise.name,
@@ -194,7 +189,6 @@ export const getAuthenticatedUser = async (user: import("../../shared/types/toke
                 phoneNumber: userFound.enterprise.phoneNumber
             } : null,
             application: userFound.enterprise?.application ? {
-                name: userFound.enterprise.application.name,
                 domain: userFound.enterprise.application.domain
             } : null
         };
@@ -210,14 +204,11 @@ export const getAuthenticatedUser = async (user: import("../../shared/types/toke
                 urlImgProfile: true,
                 enterprise: {
                     select: {
-                        id: true,
                         name: true,
                         email: true,
                         phoneNumber: true,
                         application: {
                             select: {
-                                id: true,
-                                name: true,
                                 domain: true
                             }
                         }
@@ -231,20 +222,17 @@ export const getAuthenticatedUser = async (user: import("../../shared/types/toke
         }
 
         return {
-            id: influencerFound.id,
             name: influencerFound.name,
             slug: influencerFound.slug,
             email: influencerFound.email,
             personalUrl: influencerFound.personalUrl,
             urlImgProfile: influencerFound.urlImgProfile,
-            accountType: "INFLUENCER" as const,
             enterprise: influencerFound.enterprise ? {
                 name: influencerFound.enterprise.name,
                 email: influencerFound.enterprise.email,
                 phoneNumber: influencerFound.enterprise.phoneNumber
             } : null,
             application: influencerFound.enterprise?.application ? {
-                name: influencerFound.enterprise.application.name,
                 domain: influencerFound.enterprise.application.domain
             } : null
         };

@@ -148,14 +148,11 @@ const getAuthenticatedUser = async (user) => {
                 },
                 enterprise: {
                     select: {
-                        id: true,
                         name: true,
                         email: true,
                         phoneNumber: true,
                         application: {
                             select: {
-                                id: true,
-                                name: true,
                                 domain: true
                             }
                         }
@@ -167,10 +164,8 @@ const getAuthenticatedUser = async (user) => {
             throw new appError_1.AppError("Usuário não encontrado.", 404);
         }
         return {
-            id: userFound.id,
             name: userFound.name,
             email: userFound.email,
-            accountType: "USER",
             role: userFound.role.role,
             enterprise: userFound.enterprise ? {
                 name: userFound.enterprise.name,
@@ -178,7 +173,6 @@ const getAuthenticatedUser = async (user) => {
                 phoneNumber: userFound.enterprise.phoneNumber
             } : null,
             application: userFound.enterprise?.application ? {
-                name: userFound.enterprise.application.name,
                 domain: userFound.enterprise.application.domain
             } : null
         };
@@ -195,14 +189,11 @@ const getAuthenticatedUser = async (user) => {
                 urlImgProfile: true,
                 enterprise: {
                     select: {
-                        id: true,
                         name: true,
                         email: true,
                         phoneNumber: true,
                         application: {
                             select: {
-                                id: true,
-                                name: true,
                                 domain: true
                             }
                         }
@@ -214,20 +205,17 @@ const getAuthenticatedUser = async (user) => {
             throw new appError_1.AppError("Influenciador não encontrado.", 404);
         }
         return {
-            id: influencerFound.id,
             name: influencerFound.name,
             slug: influencerFound.slug,
             email: influencerFound.email,
             personalUrl: influencerFound.personalUrl,
             urlImgProfile: influencerFound.urlImgProfile,
-            accountType: "INFLUENCER",
             enterprise: influencerFound.enterprise ? {
                 name: influencerFound.enterprise.name,
                 email: influencerFound.enterprise.email,
                 phoneNumber: influencerFound.enterprise.phoneNumber
             } : null,
             application: influencerFound.enterprise?.application ? {
-                name: influencerFound.enterprise.application.name,
                 domain: influencerFound.enterprise.application.domain
             } : null
         };
