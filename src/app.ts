@@ -7,6 +7,9 @@ import { authRoutes } from "./modules/auth/auth.router";
 import { linksRoutes } from "./modules/links/links.router";
 import { categoryRoutes } from "./modules/category/category.router";
 import { schedulesRoutes } from "./modules/schedules/schedules.router";
+import { tokenInviteRoutes } from "./modules/tokenInvite/tokenInvite.router";
+import { influencerRoutes } from "./modules/influencer/influencer.router";
+import { dashboardRouter } from "./modules/dashboard/dashboard.router";
 import { errorHandler } from "./shared/middlewares/errorHandler";
 
 const app = express();
@@ -28,6 +31,9 @@ app.use("/auth", authRoutes);
 app.use("/links", linksRoutes);
 app.use("/categories", categoryRoutes);
 app.use("/schedules", schedulesRoutes);
+app.use("/token-invites", tokenInviteRoutes);
+app.use("/influencers", influencerRoutes);
+app.use("/dashboard", dashboardRouter);
 
 app.use(errorHandler);
 

@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "docker compose up -d && tsx watch src/server.ts",
     "build": "prisma generate && tsc",
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
@@ -46,7 +46,9 @@
     "@types/node": "^26.1.2",
     "@types/node-cron": "^3.0.11",
     "@types/pg": "^8.20.4",
+    "@types/supertest": "^7.2.1",
     "jest": "^30.4.2",
+    "supertest": "^7.2.2",
     "tsx": "^4.23.5",
     "typescript": "^7.0.2"
   }

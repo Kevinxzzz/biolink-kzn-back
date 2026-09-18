@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.extractDomain = extractDomain;
+exports.extractBaseUrl = extractBaseUrl;
 exports.normalizeDomain = normalizeDomain;
 /**
  * Extrai o domínio de uma requisição HTTP de forma segura usando req.hostname.
@@ -19,8 +20,35 @@ function extractDomain(req) {
             // Ignora a URL malformada e segue para o fallback
         }
     }
+    const forwardedHost = req.headers['x-forwarded-host'];
+    if (forwardedHost) {
+        // x-forwarded-host pode ser uma string separada por vírgula se houver múltiplos proxies
+        const firstHost = (typeof forwardedHost === 'string' ? forwardedHost : forwardedHost[0]).split(',')[0];
+        return normalizeDomain(firstHost);
+    }
     if (req.hostname) {
         return normalizeDomain(req.hostname);
+    }
+    return null;
+}
+/**
+ * Extrai a URL base (protocolo + host + porta) da requisição.
+ * Ideal para montar links públicos devolvidos pela API (ex: links de compartilhamento).
+ */
+function extractBaseUrl(req) {
+    const origin = req.headers.origin;
+    if (origin) {
+        try {
+            const url = new URL(origin);
+            return `${url.protocol}//${url.host}`;
+        }
+        catch {
+            // fallback
+        }
+    }
+    const host = req.get('host');
+    if (host) {
+        return `${req.protocol}://${host}`;
     }
     return null;
 }

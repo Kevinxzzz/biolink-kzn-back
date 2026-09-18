@@ -11,6 +11,9 @@ const auth_router_1 = require("./modules/auth/auth.router");
 const links_router_1 = require("./modules/links/links.router");
 const category_router_1 = require("./modules/category/category.router");
 const schedules_router_1 = require("./modules/schedules/schedules.router");
+const tokenInvite_router_1 = require("./modules/tokenInvite/tokenInvite.router");
+const influencer_router_1 = require("./modules/influencer/influencer.router");
+const dashboard_router_1 = require("./modules/dashboard/dashboard.router");
 const errorHandler_1 = require("./shared/middlewares/errorHandler");
 const app = (0, express_1.default)();
 if (env_1.env.TRUST_PROXY) {
@@ -26,5 +29,8 @@ app.use("/auth", auth_router_1.authRoutes);
 app.use("/links", links_router_1.linksRoutes);
 app.use("/categories", category_router_1.categoryRoutes);
 app.use("/schedules", schedules_router_1.schedulesRoutes);
+app.use("/token-invites", tokenInvite_router_1.tokenInviteRoutes);
+app.use("/influencers", influencer_router_1.influencerRoutes);
+app.use("/dashboard", dashboard_router_1.dashboardRouter);
 app.use(errorHandler_1.errorHandler);
 exports.default = app;

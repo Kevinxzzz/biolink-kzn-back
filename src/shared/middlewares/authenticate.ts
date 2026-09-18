@@ -108,7 +108,7 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
 
                 userRecord = {
                     id: influencer.id,
-                    email: influencer.email,
+                    email: influencer.email || "",
                     enterpriseId: influencer.enterpriseId,
                     applicationId: influencer.enterprise.applicationId,
                     accountType: "INFLUENCER"

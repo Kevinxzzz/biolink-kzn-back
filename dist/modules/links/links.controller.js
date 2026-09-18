@@ -137,7 +137,8 @@ exports.reorder = reorder;
 const redirect = async (req, res, next) => {
     try {
         const categoryId = req.params.categoryId;
-        const url = await linksService.processClickAndRedirect(categoryId);
+        const influencerSlug = req.query.influencer;
+        const url = await linksService.processClickAndRedirect(categoryId, influencerSlug);
         return res.redirect(url);
     }
     catch (error) {

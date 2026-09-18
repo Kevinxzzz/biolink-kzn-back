@@ -29,6 +29,12 @@ jest.mock("../../shared/database/prisma", () => ({
         },
         enterpriseCountDailyClicks: {
             upsert: jest.fn()
+        },
+        urlCountDailyClicks: {
+            upsert: jest.fn()
+        },
+        influencer: {
+            findFirst: jest.fn()
         }
     }
 }));
@@ -61,6 +67,9 @@ describe("Links Module", () => {
                 updateMany: jest.fn()
             },
             enterpriseCountDailyClicks: {
+                upsert: jest.fn()
+            },
+            urlCountDailyClicks: {
                 upsert: jest.fn()
             }
         };
@@ -501,6 +510,85 @@ describe("Links Module", () => {
             const url = await processClickAndRedirect("cat1");
 
             expect(mockTx.enterpriseUrl.update).not.toHaveBeenCalled(); // Não alterou nada no BD
+            expect(url).toBe("http://link1.com");
+        });
+
+        it("deve incrementar chave de influencer no Redis se influencerSlug válido for passado", async () => {
+            (prisma.enterpriseUrl.findFirst as jest.Mock).mockResolvedValue({ id: "link1", url: "http://link1.com", countClicks: 10 });
+            (prisma.categoryRotation.findFirst as jest.Mock).mockResolvedValue({ toggleType: "MANUAL" });
+            (prisma.influencer.findFirst as jest.Mock).mockResolvedValue({ id: "inf1", slug: "valido", enterpriseId: "ent1" });
+
+            const url = await processClickAndRedirect("cat1", "valido");
+
+            expect(prisma.influencer.findFirst).toHaveBeenCalledWith({
+                where: { slug: "valido", enterpriseId: "ent1" }
+            });
+            expect(redis.incr).toHaveBeenCalledWith("influencer_clicks:ent1:inf1");
+            expect(redis.incr).toHaveBeenCalledWith("clicks:ent1:cat1"); // Mantém o incremento da categoria
+            expect(url).toBe("http://link1.com");
+        });
+
+        it("NÃO deve incrementar chave de influencer se influencerSlug for inválido (e não deve quebrar o fluxo)", async () => {
+            (prisma.enterpriseUrl.findFirst as jest.Mock).mockResolvedValue({ id: "link1", url: "http://link1.com", countClicks: 10 });
+            (prisma.categoryRotation.findFirst as jest.Mock).mockResolvedValue({ toggleType: "MANUAL" });
+            (prisma.influencer.findFirst as jest.Mock).mockResolvedValue(null);
+
+            const url = await processClickAndRedirect("cat1", "invalido");
+
+            expect(prisma.influencer.findFirst).toHaveBeenCalledWith({
+                where: { slug: "invalido", enterpriseId: "ent1" }
+            });
+            // O incremento da categoria ocorre
+            expect(redis.incr).toHaveBeenCalledWith("clicks:ent1:cat1");
+            // Mas não incrementa nada de influenciador e o fluxo segue normal
+            expect(url).toBe("http://link1.com");
+        });
+
+        it("NÃO deve falhar o redirect se o Redis do influencer falhar (falha silenciosa para o influencer)", async () => {
+            const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
+
+            (prisma.enterpriseUrl.findFirst as jest.Mock).mockResolvedValue({ id: "link1", url: "http://link1.com", countClicks: 10 });
+            (prisma.categoryRotation.findFirst as jest.Mock).mockResolvedValue({ toggleType: "MANUAL" });
+            (prisma.influencer.findFirst as jest.Mock).mockResolvedValue({ id: "inf1", slug: "valido", enterpriseId: "ent1" });
+
+            // Simula uma falha apenas no primeiro incr (que será o do influenciador)
+            (redis.incr as jest.Mock)
+                .mockRejectedValueOnce(new Error("Redis connection lost"))
+                .mockResolvedValueOnce(1);
+
+            const url = await processClickAndRedirect("cat1", "valido");
+
+            expect(prisma.influencer.findFirst).toHaveBeenCalledWith({
+                where: { slug: "valido", enterpriseId: "ent1" }
+            });
+            // O erro foi logado
+            expect(consoleSpy).toHaveBeenCalled();
+
+            // O incremento da categoria ocorre normalmente (o segundo incr)
+            expect(redis.incr).toHaveBeenCalledWith("clicks:ent1:cat1");
+            // O redirect funciona
+            expect(url).toBe("http://link1.com");
+
+            consoleSpy.mockRestore();
+        });
+
+        it("NÃO deve atribuir clique se o influenciador pertencer a outra empresa (cross-tenant)", async () => {
+            (prisma.enterpriseUrl.findFirst as jest.Mock).mockResolvedValue({ id: "link1", url: "http://link1.com", countClicks: 10 });
+            (prisma.categoryRotation.findFirst as jest.Mock).mockResolvedValue({ toggleType: "MANUAL" });
+
+            // Simula a situação onde a categoria é da ent1, mas mandaram um slug da ent2.
+            // O `findFirst` vai procurar pelo slug na ent1 e NÃO vai encontrar.
+            (prisma.influencer.findFirst as jest.Mock).mockResolvedValue(null);
+
+            const url = await processClickAndRedirect("cat1", "slug-da-ent2");
+
+            expect(prisma.influencer.findFirst).toHaveBeenCalledWith({
+                // Verifica a regra de negócio: procura o influenciador no Enterprise da Categoria
+                where: { slug: "slug-da-ent2", enterpriseId: "ent1" }
+            });
+
+            // Como retornou null, não incrementa influencer e segue normal para categoria
+            expect(redis.incr).toHaveBeenCalledWith("clicks:ent1:cat1");
             expect(url).toBe("http://link1.com");
         });
     });

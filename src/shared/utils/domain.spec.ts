@@ -1,4 +1,4 @@
-import { extractDomain, normalizeDomain } from './domain';
+import { extractDomain, normalizeDomain, extractBaseUrl } from './domain';
 import { Request } from 'express';
 
 describe('Domain Utils', () => {
@@ -57,6 +57,20 @@ describe('Domain Utils', () => {
             expect(extractDomain(req)).toBe('kzn.com');
         });
 
+        it('deve usar x-forwarded-host se fornecido e Origin ausente', () => {
+            const req = mockRequest('localhost', {
+                'x-forwarded-host': 'prod-kzn.com'
+            });
+            expect(extractDomain(req)).toBe('prod-kzn.com');
+        });
+
+        it('deve extrair o primeiro host se x-forwarded-host contiver multiplos valores', () => {
+            const req = mockRequest('localhost', {
+                'x-forwarded-host': 'client-domain.com, proxy1.com'
+            });
+            expect(extractDomain(req)).toBe('client-domain.com');
+        });
+
         it('deve usar req.hostname como fallback se os headers nao existirem', () => {
             expect(extractDomain(mockRequest('alecio.com'))).toBe('alecio.com');
             expect(extractDomain(mockRequest('kzn.com'))).toBe('kzn.com');
@@ -67,6 +81,50 @@ describe('Domain Utils', () => {
         it('deve retornar null se req.hostname e headers nao existirem', () => {
             const req = mockRequest(undefined);
             expect(extractDomain(req)).toBeNull();
+        });
+    });
+    describe('extractBaseUrl', () => {
+        const mockRequest = (protocol: string, hostHeader?: string, origin?: string): Request => {
+            return {
+                protocol,
+                headers: {
+                    ...(origin ? { origin } : {})
+                },
+                get: (name: string) => {
+                    if (name.toLowerCase() === 'host') return hostHeader;
+                    return undefined;
+                }
+            } as unknown as Request;
+        };
+
+        it('deve usar o Origin se fornecido preservando protocolo e porta', () => {
+            const req = mockRequest('http', 'localhost:8080', 'http://localhost:8080');
+            expect(extractBaseUrl(req)).toBe('http://localhost:8080');
+        });
+
+        it('deve extrair https://kzngg.com corretamente', () => {
+            const req = mockRequest('https', 'kzngg.com', 'https://kzngg.com');
+            expect(extractBaseUrl(req)).toBe('https://kzngg.com');
+        });
+
+        it('deve extrair URL com porta customizada em https', () => {
+            const req = mockRequest('https', 'kzngg.com:8443', 'https://kzngg.com:8443');
+            expect(extractBaseUrl(req)).toBe('https://kzngg.com:8443');
+        });
+
+        it('deve ignorar Origin malformado e usar fallback (host)', () => {
+            const req = mockRequest('https', 'kzngg.com:8443', 'not-a-valid-url');
+            expect(extractBaseUrl(req)).toBe('https://kzngg.com:8443');
+        });
+
+        it('deve usar req.get(host) como fallback sem Origin', () => {
+            const req = mockRequest('http', 'localhost:8080');
+            expect(extractBaseUrl(req)).toBe('http://localhost:8080');
+        });
+
+        it('deve retornar null se nada for encontrado', () => {
+            const req = mockRequest('http');
+            expect(extractBaseUrl(req)).toBeNull();
         });
     });
 });

@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getAuthenticatedUser = exports.registerEnterprise = exports.loginIn = void 0;
+exports.createUserValidationAndHash = exports.getAuthenticatedUser = exports.registerEnterprise = exports.loginIn = void 0;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const env_1 = require("../../shared/config/env");
@@ -87,10 +87,7 @@ const registerEnterprise = async (data, requestDomain) => {
         const existingCompanyPhone = await prisma_1.prisma.enterprise.findFirst({ where: { phoneNumber: data.company.phone } });
         if (existingCompanyPhone)
             throw new appError_1.AppError("Telefone da empresa já cadastrado.", 409);
-        const existingUserEmail = await prisma_1.prisma.user.findFirst({ where: { email: data.user.email } });
-        if (existingUserEmail)
-            throw new appError_1.AppError("O e-mail informado para o usuário já está cadastrado.", 409);
-        const hashedPassword = await bcryptjs_1.default.hash(data.user.password, 10);
+        const hashedPassword = await (0, exports.createUserValidationAndHash)(data.user.email, data.user.password);
         const result = await prisma_1.prisma.$transaction(async (tx) => {
             const roleOwner = await tx.role.findFirst({
                 where: { role: "OWNER" }
@@ -151,14 +148,11 @@ const getAuthenticatedUser = async (user) => {
                 },
                 enterprise: {
                     select: {
-                        id: true,
                         name: true,
                         email: true,
                         phoneNumber: true,
                         application: {
                             select: {
-                                id: true,
-                                name: true,
                                 domain: true
                             }
                         }
@@ -170,10 +164,8 @@ const getAuthenticatedUser = async (user) => {
             throw new appError_1.AppError("Usuário não encontrado.", 404);
         }
         return {
-            id: userFound.id,
             name: userFound.name,
             email: userFound.email,
-            accountType: "USER",
             role: userFound.role.role,
             enterprise: userFound.enterprise ? {
                 name: userFound.enterprise.name,
@@ -181,7 +173,6 @@ const getAuthenticatedUser = async (user) => {
                 phoneNumber: userFound.enterprise.phoneNumber
             } : null,
             application: userFound.enterprise?.application ? {
-                name: userFound.enterprise.application.name,
                 domain: userFound.enterprise.application.domain
             } : null
         };
@@ -198,14 +189,11 @@ const getAuthenticatedUser = async (user) => {
                 urlImgProfile: true,
                 enterprise: {
                     select: {
-                        id: true,
                         name: true,
                         email: true,
                         phoneNumber: true,
                         application: {
                             select: {
-                                id: true,
-                                name: true,
                                 domain: true
                             }
                         }
@@ -217,23 +205,27 @@ const getAuthenticatedUser = async (user) => {
             throw new appError_1.AppError("Influenciador não encontrado.", 404);
         }
         return {
-            id: influencerFound.id,
             name: influencerFound.name,
             slug: influencerFound.slug,
             email: influencerFound.email,
             personalUrl: influencerFound.personalUrl,
             urlImgProfile: influencerFound.urlImgProfile,
-            accountType: "INFLUENCER",
             enterprise: influencerFound.enterprise ? {
                 name: influencerFound.enterprise.name,
                 email: influencerFound.enterprise.email,
                 phoneNumber: influencerFound.enterprise.phoneNumber
             } : null,
             application: influencerFound.enterprise?.application ? {
-                name: influencerFound.enterprise.application.name,
                 domain: influencerFound.enterprise.application.domain
             } : null
         };
     }
 };
 exports.getAuthenticatedUser = getAuthenticatedUser;
+const createUserValidationAndHash = async (email, passwordString) => {
+    const existingUserEmail = await prisma_1.prisma.user.findFirst({ where: { email } });
+    if (existingUserEmail)
+        throw new appError_1.AppError("O e-mail informado para o usuário já está cadastrado.", 409);
+    return bcryptjs_1.default.hash(passwordString, 10);
+};
+exports.createUserValidationAndHash = createUserValidationAndHash;

@@ -489,12 +489,9 @@ describe("Auth Module - /auth/me", () => {
                 }
             });
             await (0, auth_controller_1.getMe)(mockReq, mockRes, mockNext);
-            expect(mockRes.status).toHaveBeenCalledWith(200);
             expect(mockRes.json).toHaveBeenCalledWith({
-                id: "user-1",
                 name: "Test User",
                 email: "user@test.com",
-                accountType: "USER",
                 role: client_1.UserRole.OWNER,
                 enterprise: {
                     name: "Test Enterprise",
@@ -502,7 +499,6 @@ describe("Auth Module - /auth/me", () => {
                     phoneNumber: "123456789"
                 },
                 application: {
-                    name: "KZN",
                     domain: "localhost:3000"
                 }
             });
@@ -544,10 +540,8 @@ describe("Auth Module - /auth/me", () => {
                 role: client_1.UserRole.OWNER
             });
             expect(result).toEqual({
-                id: "user-1",
                 name: "Test User",
                 email: "user@test.com",
-                accountType: "USER",
                 role: client_1.UserRole.OWNER,
                 enterprise: {
                     name: "Test Enterprise",
@@ -555,7 +549,6 @@ describe("Auth Module - /auth/me", () => {
                     phoneNumber: "123456789"
                 },
                 application: {
-                    name: "KZN",
                     domain: "localhost:3000"
                 }
             });
@@ -588,20 +581,17 @@ describe("Auth Module - /auth/me", () => {
                 accountType: "INFLUENCER"
             });
             expect(result).toEqual({
-                id: "inf-1",
                 name: "Test Influencer",
                 slug: "test-inf",
                 email: "inf@test.com",
                 personalUrl: "https://inf.com",
                 urlImgProfile: "https://img.com/pic.jpg",
-                accountType: "INFLUENCER",
                 enterprise: {
                     name: "Test Enterprise",
                     email: "company@test.com",
                     phoneNumber: "123456789"
                 },
                 application: {
-                    name: "KZN",
                     domain: "localhost:3000"
                 }
             });

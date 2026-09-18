@@ -96,10 +96,7 @@ export const registerEnterprise = async (data: import("../../shared/types/auth.t
         const existingCompanyPhone = await prisma.enterprise.findFirst({ where: { phoneNumber: data.company.phone } });
         if (existingCompanyPhone) throw new AppError("Telefone da empresa já cadastrado.", 409);
 
-        const existingUserEmail = await prisma.user.findFirst({ where: { email: data.user.email } });
-        if (existingUserEmail) throw new AppError("O e-mail informado para o usuário já está cadastrado.", 409);
-
-        const hashedPassword = await bcrypt.hash(data.user.password, 10);
+        const hashedPassword = await createUserValidationAndHash(data.user.email, data.user.password);
 
         const result = await prisma.$transaction(async (tx) => {
             const roleOwner = await tx.role.findFirst({
@@ -165,14 +162,11 @@ export const getAuthenticatedUser = async (user: import("../../shared/types/toke
                 },
                 enterprise: {
                     select: {
-                        id: true,
                         name: true,
                         email: true,
                         phoneNumber: true,
                         application: {
                             select: {
-                                id: true,
-                                name: true,
                                 domain: true
                             }
                         }
@@ -186,10 +180,8 @@ export const getAuthenticatedUser = async (user: import("../../shared/types/toke
         }
 
         return {
-            id: userFound.id,
             name: userFound.name,
             email: userFound.email,
-            accountType: "USER" as const,
             role: userFound.role.role,
             enterprise: userFound.enterprise ? {
                 name: userFound.enterprise.name,
@@ -197,7 +189,6 @@ export const getAuthenticatedUser = async (user: import("../../shared/types/toke
                 phoneNumber: userFound.enterprise.phoneNumber
             } : null,
             application: userFound.enterprise?.application ? {
-                name: userFound.enterprise.application.name,
                 domain: userFound.enterprise.application.domain
             } : null
         };
@@ -213,14 +204,11 @@ export const getAuthenticatedUser = async (user: import("../../shared/types/toke
                 urlImgProfile: true,
                 enterprise: {
                     select: {
-                        id: true,
                         name: true,
                         email: true,
                         phoneNumber: true,
                         application: {
                             select: {
-                                id: true,
-                                name: true,
                                 domain: true
                             }
                         }
@@ -234,22 +222,25 @@ export const getAuthenticatedUser = async (user: import("../../shared/types/toke
         }
 
         return {
-            id: influencerFound.id,
             name: influencerFound.name,
             slug: influencerFound.slug,
             email: influencerFound.email,
             personalUrl: influencerFound.personalUrl,
             urlImgProfile: influencerFound.urlImgProfile,
-            accountType: "INFLUENCER" as const,
             enterprise: influencerFound.enterprise ? {
                 name: influencerFound.enterprise.name,
                 email: influencerFound.enterprise.email,
                 phoneNumber: influencerFound.enterprise.phoneNumber
             } : null,
             application: influencerFound.enterprise?.application ? {
-                name: influencerFound.enterprise.application.name,
                 domain: influencerFound.enterprise.application.domain
             } : null
         };
     }
+};
+
+export const createUserValidationAndHash = async (email: string, passwordString: string) => {
+    const existingUserEmail = await prisma.user.findFirst({ where: { email } });
+    if (existingUserEmail) throw new AppError("O e-mail informado para o usuário já está cadastrado.", 409);
+    return bcrypt.hash(passwordString, 10);
 };
