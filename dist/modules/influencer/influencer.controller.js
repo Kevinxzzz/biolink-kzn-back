@@ -40,6 +40,13 @@ const influencerService = __importStar(require("./influencer.service"));
 const domain_1 = require("../../shared/utils/domain");
 const getPublicBySlug = async (req, res, next) => {
     try {
+        console.log("[DEBUG API] Request recebido em getPublicBySlug", {
+            hostname: req.hostname,
+            host: req.headers.host,
+            origin: req.headers.origin,
+            forwardedHost: req.headers["x-forwarded-host"],
+            url: req.originalUrl
+        });
         const domain = (0, domain_1.extractDomain)(req);
         if (!domain) {
             return next(new appError_1.AppError("Domínio não identificado na requisição.", 403));
