@@ -60,6 +60,8 @@ describe("CronIncrement Module (Etapa 2) - Consolidação", () => {
             return await cb(mockTx);
         });
 
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+
         jest.clearAllMocks();
     });
 

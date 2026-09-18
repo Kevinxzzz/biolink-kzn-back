@@ -56,6 +56,7 @@ describe("CronIncrement Module (Etapa 2) - Consolidação", () => {
         prisma_1.prisma.$transaction.mockImplementation(async (cb) => {
             return await cb(mockTx);
         });
+        jest.spyOn(console, 'error').mockImplementation(() => { });
         jest.clearAllMocks();
     });
     it("1/2/3/4. deve consolidar os cliques corretamente, atualizando o link ativo e o count diário (upsert)", async () => {

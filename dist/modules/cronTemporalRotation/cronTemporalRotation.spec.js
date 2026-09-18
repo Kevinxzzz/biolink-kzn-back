@@ -99,6 +99,7 @@ describe("Temporal Rotation Module (Etapa 3) - TIMER e SCHEDULE", () => {
         prisma_1.prisma.$transaction.mockImplementation(async (cb) => {
             return await cb(mockTx);
         });
+        jest.spyOn(console, 'error').mockImplementation(() => { });
         jest.clearAllMocks();
     });
     describe("TIMER Rotations", () => {

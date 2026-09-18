@@ -46,6 +46,23 @@ function extractBaseUrl(req) {
             // fallback
         }
     }
+    const referer = req.headers.referer;
+    if (referer) {
+        try {
+            const url = new URL(referer);
+            return `${url.protocol}//${url.host}`;
+        }
+        catch {
+            // fallback
+        }
+    }
+    const forwardedHost = req.headers['x-forwarded-host'];
+    if (forwardedHost) {
+        const firstHost = (typeof forwardedHost === 'string' ? forwardedHost : forwardedHost[0]).split(',')[0].trim();
+        const forwardedProto = req.headers['x-forwarded-proto'];
+        const proto = forwardedProto ? (typeof forwardedProto === 'string' ? forwardedProto : forwardedProto[0]).split(',')[0].trim() : req.protocol;
+        return `${proto}://${firstHost}`;
+    }
     const host = req.get('host');
     if (host) {
         return `${req.protocol}://${host}`;

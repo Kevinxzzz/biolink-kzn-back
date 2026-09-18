@@ -71,6 +71,8 @@ describe("Temporal Rotation Module (Etapa 3) - TIMER e SCHEDULE", () => {
             return await cb(mockTx);
         });
 
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+
         jest.clearAllMocks();
     });
 

@@ -36,6 +36,7 @@ jest.mock("../../shared/database/prisma", () => ({
 describe("Influencer Module", () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        jest.spyOn(console, 'error').mockImplementation(() => { });
     });
     describe("CRUD & Validation", () => {
         it("1. deve criar influenciador com sucesso (counterEntries = 0)", async () => {

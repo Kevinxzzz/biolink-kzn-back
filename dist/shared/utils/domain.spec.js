@@ -101,7 +101,18 @@ describe('Domain Utils', () => {
             const req = mockRequest('https', 'kzngg.com:8443', 'not-a-valid-url');
             expect((0, domain_1.extractBaseUrl)(req)).toBe('https://kzngg.com:8443');
         });
-        it('deve usar req.get(host) como fallback sem Origin', () => {
+        it('deve usar o referer se origin nao existir', () => {
+            const req = mockRequest('http', 'localhost:8080');
+            req.headers.referer = 'https://kzn-front-stage-production.up.railway.app/dashboard';
+            expect((0, domain_1.extractBaseUrl)(req)).toBe('https://kzn-front-stage-production.up.railway.app');
+        });
+        it('deve usar x-forwarded-host e x-forwarded-proto se origin e referer nao existirem', () => {
+            const req = mockRequest('http', 'api-internal:3000');
+            req.headers['x-forwarded-host'] = 'prod-front.com';
+            req.headers['x-forwarded-proto'] = 'https';
+            expect((0, domain_1.extractBaseUrl)(req)).toBe('https://prod-front.com');
+        });
+        it('deve usar req.get(host) como fallback sem Origin, Referer e X-Forwarded-Host', () => {
             const req = mockRequest('http', 'localhost:8080');
             expect((0, domain_1.extractBaseUrl)(req)).toBe('http://localhost:8080');
         });

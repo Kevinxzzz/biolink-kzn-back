@@ -8,8 +8,12 @@ const ioredis_1 = __importDefault(require("ioredis"));
 const env_1 = require("../config/env");
 exports.redis = new ioredis_1.default(env_1.env.REDIS_URL);
 exports.redis.on("connect", () => {
-    console.log("Redis connected successfully.");
+    if (process.env.NODE_ENV !== 'test') {
+        console.log("Redis connected successfully.");
+    }
 });
 exports.redis.on("error", (err) => {
-    console.error("Redis connection error:", err);
+    if (process.env.NODE_ENV !== 'test') {
+        console.error("Redis connection error:", err);
+    }
 });
