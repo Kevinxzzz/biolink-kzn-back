@@ -6,6 +6,14 @@ import { extractDomain, extractBaseUrl } from "../../shared/utils/domain";
 
 export const getPublicBySlug = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        console.log("[DEBUG API] Request recebido em getPublicBySlug", { 
+            hostname: req.hostname, 
+            host: req.headers.host, 
+            origin: req.headers.origin, 
+            forwardedHost: req.headers["x-forwarded-host"], 
+            url: req.originalUrl 
+        });
+
         const domain = extractDomain(req);
         if (!domain) {
             return next(new AppError("Domínio não identificado na requisição.", 403));
