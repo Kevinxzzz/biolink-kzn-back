@@ -294,7 +294,23 @@ export const reorderLinks = async (enterpriseId: string, { categoryId, links }: 
     });
 };
 
-export const processClickAndRedirect = async (categoryId: string, influencerSlug?: string): Promise<string> => {
+/**
+ * Tempo de exclusividade de contabilização de clique por visitante por categoria.
+ * Durante esse período, um mesmo `visitorId` não gerará novo incremento
+ * na mesma categoria, evitando cliques repetitivos e metralhamento de botão.
+ */
+const VISITOR_CLICK_DEDUP_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 dias
+
+export const processClickAndRedirect = async (
+    categoryId: string,
+    options: {
+        influencerSlug?: string;
+        shouldCountClick: boolean;
+        visitorId?: string;
+    }
+): Promise<string> => {
+    const { influencerSlug, shouldCountClick, visitorId } = options;
+
     const category = await prisma.enterpriseCategory.findUnique({
         where: { id: categoryId }
     });
@@ -305,11 +321,38 @@ export const processClickAndRedirect = async (categoryId: string, influencerSlug
 
     const enterpriseId = category.enterpriseId;
 
+    // ─── Guarda de deduplicação: deve acontecer ANTES de qualquer mutação ───────
+    // Usuário autenticado → nunca contabiliza, nunca afeta rotação.
+    // Visitante → tenta reservar o slot no Redis com SET NX.
+    //   - Novo (SET OK):      segue para contabilização e rotação normais.
+    //   - Existente (SET nulo): apenas retorna a URL ativa, sem nenhuma mutação.
+    let shouldActuallyCount = false;
+
+    if (shouldCountClick && visitorId) {
+        const dedupKey = `kzn:dedup:${visitorId}:${categoryId}`;
+        const setResult = await redis.set(dedupKey, "1", "EX", VISITOR_CLICK_DEDUP_TTL_SECONDS, "NX");
+        shouldActuallyCount = setResult === "OK";
+    }
+    // shouldCountClick=false (autenticado) → shouldActuallyCount permanece false.
+
+    // ─── Busca o link ativo atual da categoria (necessário para todos os casos) ─
+    if (!shouldActuallyCount) {
+        const activeLink = await prisma.enterpriseUrl.findFirst({
+            where: { enterpriseId, categoryId, active: true },
+        });
+
+        if (!activeLink) {
+            throw new AppError("Nenhum link ativo encontrado para esta categoria.", 404);
+        }
+
+        return activeLink.url;
+    }
+
+    // ─── Fluxo normal de contabilização (visitante inédito) ─────────────────────
     let influencerKeyToRollback: string | null = null;
 
     if (influencerSlug) {
         try {
-            // Resolve influencer para contabilizar de forma isolada, não bloqueante
             const influencer = await prisma.influencer.findFirst({
                 where: { slug: influencerSlug, enterpriseId }
             });
@@ -319,8 +362,6 @@ export const processClickAndRedirect = async (categoryId: string, influencerSlug
                 influencerKeyToRollback = influencerKey;
             }
         } catch (error) {
-            // Ignora silenciosamente a falha no incremento do influenciador
-            // O objetivo é NUNCA interromper o clique normal
             console.error(`Erro ao incrementar clique do influenciador ${influencerSlug}:`, error);
         }
     }
@@ -443,12 +484,12 @@ export const processClickAndRedirect = async (categoryId: string, influencerSlug
         return link.url;
     } catch (error) {
         if (influencerKeyToRollback) {
-            // Faz o rollback do clique do influenciador caso a rotação ou resolução da URL falhe, garantindo consistência
             await redis.decr(influencerKeyToRollback).catch(e => console.error("Erro no rollback do influenciador:", e));
         }
         throw error;
     }
 };
+
 
 export const processClickAndRedirectOnlyEfootball = async (): Promise<string> => {
     const categoryEfootball = await prisma.enterpriseCategory.findFirst({
@@ -464,5 +505,5 @@ export const processClickAndRedirectOnlyEfootball = async (): Promise<string> =>
         throw new AppError("EnterpriseId indefinido.", 404);
     }
 
-    return await processClickAndRedirect(categoryEfootball.id);
+    return await processClickAndRedirect(categoryEfootball.id, { shouldCountClick: false });
 };
