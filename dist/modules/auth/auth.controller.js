@@ -1,15 +1,19 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getMe = exports.registerCompany = exports.login = void 0;
+exports.logout = exports.getMe = exports.registerCompany = exports.login = void 0;
 const auth_zod_1 = require("../../shared/zod/auth.zod");
 const auth_service_1 = require("./auth.service");
 const appError_1 = require("../../shared/errors/appError");
 const domain_1 = require("../../shared/utils/domain");
+const cookie_1 = require("../../shared/utils/cookie");
 const login = async (req, res, next) => {
     try {
         const parsedData = auth_zod_1.loginZod.parse(req.body);
         const domain = (0, domain_1.extractDomain)(req);
         const result = await (0, auth_service_1.loginIn)(parsedData, domain);
+        // Injeta o token como cookie HttpOnly para ser enviado automaticamente
+        // nas navegações diretas (ex: redirect de link), além do retorno normal no body.
+        (0, cookie_1.setAuthCookie)(res, result.token);
         return res.status(200).json(result);
     }
     catch (error) {
@@ -56,3 +60,17 @@ const getMe = async (req, res, next) => {
     }
 };
 exports.getMe = getMe;
+/**
+ * Encerra a sessão do usuário removendo o cookie de autenticação.
+ * O frontend também deve remover o token do localStorage.
+ */
+const logout = async (req, res, next) => {
+    try {
+        (0, cookie_1.clearAuthCookie)(res);
+        return res.status(200).json({ message: "Logout realizado com sucesso." });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.logout = logout;

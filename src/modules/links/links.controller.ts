@@ -3,6 +3,8 @@ import { AppError } from "../../shared/errors/appError";
 import { createLinkZod, updateLinkZod, reorderLinksZod } from "../../shared/zod/links.zod";
 import * as linksService from "./links.service";
 import { extractDomain } from "../../shared/utils/domain";
+import { resolveUserAuth } from "../../shared/middlewares/authenticate";
+import { readAuthCookie, readVisitorCookie, setVisitorCookie } from "../../shared/utils/cookie";
 
 export const create = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -112,7 +114,46 @@ export const redirect = async (req: Request, res: Response, next: NextFunction) 
         const categoryId = req.params.categoryId as string;
         const influencerSlug = req.query.influencer as string | undefined;
 
-        const url = await linksService.processClickAndRedirect(categoryId, influencerSlug);
+        // ─── Passo 1: Tentar resolver autenticação pelo cookie ────────────────
+        // Usa a mesma função do middleware `authenticate`, mas de forma silenciosa:
+        // ausência de cookie ou token inválido → trata como visitante, sem lançar erro.
+        let isAuthenticated = false;
+        const authToken = readAuthCookie(req);
+
+        if (authToken) {
+            try {
+                const requestDomain = extractDomain(req);
+                const user = await resolveUserAuth(authToken, requestDomain);
+                isAuthenticated = user !== null;
+            } catch {
+                // Token inválido ou expirado → trata como visitante
+                isAuthenticated = false;
+            }
+        }
+
+        // ─── Passo 2: Identificar visitante (se não autenticado) ─────────────
+        // Se autenticado, não lemos nem gravamos o cookie de visitante.
+        let visitorId: string | undefined;
+
+        if (!isAuthenticated) {
+            const existingVisitorId = readVisitorCookie(req);
+
+            if (existingVisitorId) {
+                visitorId = existingVisitorId;
+            } else {
+                // Gera um UUID opaco, criptograficamente seguro, sem derivar dados do visitante
+                visitorId = crypto.randomUUID();
+                setVisitorCookie(res, visitorId);
+            }
+        }
+
+        // ─── Passo 3: Delegar ao service com as flags de controle ─────────────
+        // O service fará o SET NX antes de qualquer mutação de métricas/rotação.
+        const url = await linksService.processClickAndRedirect(categoryId, {
+            influencerSlug,
+            shouldCountClick: !isAuthenticated,
+            visitorId,
+        });
 
         return res.redirect(url);
     } catch (error) {

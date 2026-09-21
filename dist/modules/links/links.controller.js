@@ -37,6 +37,9 @@ exports.redirectOnlyEfootballFromKzn = exports.redirect = exports.reorder = expo
 const appError_1 = require("../../shared/errors/appError");
 const links_zod_1 = require("../../shared/zod/links.zod");
 const linksService = __importStar(require("./links.service"));
+const domain_1 = require("../../shared/utils/domain");
+const authenticate_1 = require("../../shared/middlewares/authenticate");
+const cookie_1 = require("../../shared/utils/cookie");
 const create = async (req, res, next) => {
     try {
         const parsedData = links_zod_1.createLinkZod.parse(req.body);
@@ -138,7 +141,43 @@ const redirect = async (req, res, next) => {
     try {
         const categoryId = req.params.categoryId;
         const influencerSlug = req.query.influencer;
-        const url = await linksService.processClickAndRedirect(categoryId, influencerSlug);
+        // ─── Passo 1: Tentar resolver autenticação pelo cookie ────────────────
+        // Usa a mesma função do middleware `authenticate`, mas de forma silenciosa:
+        // ausência de cookie ou token inválido → trata como visitante, sem lançar erro.
+        let isAuthenticated = false;
+        const authToken = (0, cookie_1.readAuthCookie)(req);
+        if (authToken) {
+            try {
+                const requestDomain = (0, domain_1.extractDomain)(req);
+                const user = await (0, authenticate_1.resolveUserAuth)(authToken, requestDomain);
+                isAuthenticated = user !== null;
+            }
+            catch {
+                // Token inválido ou expirado → trata como visitante
+                isAuthenticated = false;
+            }
+        }
+        // ─── Passo 2: Identificar visitante (se não autenticado) ─────────────
+        // Se autenticado, não lemos nem gravamos o cookie de visitante.
+        let visitorId;
+        if (!isAuthenticated) {
+            const existingVisitorId = (0, cookie_1.readVisitorCookie)(req);
+            if (existingVisitorId) {
+                visitorId = existingVisitorId;
+            }
+            else {
+                // Gera um UUID opaco, criptograficamente seguro, sem derivar dados do visitante
+                visitorId = crypto.randomUUID();
+                (0, cookie_1.setVisitorCookie)(res, visitorId);
+            }
+        }
+        // ─── Passo 3: Delegar ao service com as flags de controle ─────────────
+        // O service fará o SET NX antes de qualquer mutação de métricas/rotação.
+        const url = await linksService.processClickAndRedirect(categoryId, {
+            influencerSlug,
+            shouldCountClick: !isAuthenticated,
+            visitorId,
+        });
         return res.redirect(url);
     }
     catch (error) {
