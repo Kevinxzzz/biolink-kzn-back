@@ -98,7 +98,7 @@ describe("Concurrency Integration Tests", () => {
 
 
     describe("1. Teste de Stress LIMITCLICKS", () => {
-        it("deve rotacionar e consolidar 2 requisições simultâneas de forma segura", async () => {
+        it("deve rotacionar e consolidar 2 requisições simultâneas de forma segura (Visitantes Diferentes)", async () => {
             await prisma.categoryRotation.create({
                 data: { categoryId, toggleType: "LIMITCLICKS", limitClicks: 50, updateAt: new Date() }
             });
@@ -108,7 +108,7 @@ describe("Concurrency Integration Tests", () => {
 
             const promises = [];
             for (let i = 0; i < 2; i++) {
-                promises.push(processClickAndRedirect(categoryId));
+                promises.push(processClickAndRedirect(categoryId, { shouldCountClick: true, visitorId: "test-visitor-" + i }));
             }
             await Promise.all(promises);
 
@@ -122,6 +122,42 @@ describe("Concurrency Integration Tests", () => {
             expect(finalLinkB?.countClicks).toBe(0);
             expect(parseInt(finalRedisCount || "0", 10)).toBe(1);
         });
+
+        it("deve proteger a contabilização e rotação contra o MESMO visitante em 100 requisições simultâneas", async () => {
+            await prisma.categoryRotation.create({
+                data: { categoryId, toggleType: "LIMITCLICKS", limitClicks: 50, updateAt: new Date() }
+            });
+
+            const key = `clicks:${enterpriseId}:${categoryId}`;
+            await redis.set(key, 50);
+
+            const promises = [];
+            // Todas as 100 requests simultâneas usarão o MESMO visitorId
+            for (let i = 0; i < 100; i++) {
+                promises.push(processClickAndRedirect(categoryId, { shouldCountClick: true, visitorId: "same-visitor-id" }));
+            }
+            const urls = await Promise.all(promises);
+
+            const finalLinkA = await prisma.enterpriseUrl.findUnique({ where: { id: linkAId } });
+            const finalLinkB = await prisma.enterpriseUrl.findUnique({ where: { id: linkBId } });
+            const finalRedisCount = await redis.get(key);
+
+            // APENAS 1 request deve passar pelo SET NX com sucesso.
+            // Os outros 99 devem receber "null" do SET NX e não afetar em nada o Redis ou o banco.
+            // A request vencedora vai perceber que o link estava em 50 e rotacionar.
+            expect(finalLinkA?.active).toBe(false);
+            expect(finalLinkA?.countClicks).toBe(50); // 50 consolidados
+            expect(finalLinkB?.active).toBe(true);
+            expect(finalLinkB?.countClicks).toBe(0);
+            
+            // O count no redis diminui o pending (50) ficando em 0,
+            // E a própria requisição vencedora incrementa 1 para o novo link.
+            expect(parseInt(finalRedisCount || "0", 10)).toBe(1); 
+
+            // Todas as 100 requisições devem retornar uma string
+            expect(urls.length).toBe(100);
+            urls.forEach(url => expect(typeof url).toBe('string'));
+        });
     });
 
     describe("2. Concorrência Cron vs Redirect", () => {
@@ -131,7 +167,7 @@ describe("Concurrency Integration Tests", () => {
 
             const promises = [];
             for (let i = 0; i < 5; i++) {
-                promises.push(processClickAndRedirect(categoryId));
+                promises.push(processClickAndRedirect(categoryId, { shouldCountClick: true, visitorId: "test-visitor-" + i }));
             }
             promises.push(consolidateClicks());
 

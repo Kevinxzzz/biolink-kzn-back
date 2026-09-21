@@ -269,7 +269,14 @@ const reorderLinks = async (enterpriseId, { categoryId, links }) => {
     });
 };
 exports.reorderLinks = reorderLinks;
-const processClickAndRedirect = async (categoryId, influencerSlug) => {
+/**
+ * Tempo de exclusividade de contabilização de clique por visitante por categoria.
+ * Durante esse período, um mesmo `visitorId` não gerará novo incremento
+ * na mesma categoria, evitando cliques repetitivos e metralhamento de botão.
+ */
+const VISITOR_CLICK_DEDUP_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 dias
+const processClickAndRedirect = async (categoryId, options) => {
+    const { influencerSlug, shouldCountClick, visitorId } = options;
     const category = await prisma_1.prisma.enterpriseCategory.findUnique({
         where: { id: categoryId }
     });
@@ -277,10 +284,32 @@ const processClickAndRedirect = async (categoryId, influencerSlug) => {
         throw new appError_1.AppError("Categoria não encontrada.", 404);
     }
     const enterpriseId = category.enterpriseId;
+    // ─── Guarda de deduplicação: deve acontecer ANTES de qualquer mutação ───────
+    // Usuário autenticado → nunca contabiliza, nunca afeta rotação.
+    // Visitante → tenta reservar o slot no Redis com SET NX.
+    //   - Novo (SET OK):      segue para contabilização e rotação normais.
+    //   - Existente (SET nulo): apenas retorna a URL ativa, sem nenhuma mutação.
+    let shouldActuallyCount = false;
+    if (shouldCountClick && visitorId) {
+        const dedupKey = `kzn:dedup:${visitorId}:${categoryId}`;
+        const setResult = await redis_1.redis.set(dedupKey, "1", "EX", VISITOR_CLICK_DEDUP_TTL_SECONDS, "NX");
+        shouldActuallyCount = setResult === "OK";
+    }
+    // shouldCountClick=false (autenticado) → shouldActuallyCount permanece false.
+    // ─── Busca o link ativo atual da categoria (necessário para todos os casos) ─
+    if (!shouldActuallyCount) {
+        const activeLink = await prisma_1.prisma.enterpriseUrl.findFirst({
+            where: { enterpriseId, categoryId, active: true },
+        });
+        if (!activeLink) {
+            throw new appError_1.AppError("Nenhum link ativo encontrado para esta categoria.", 404);
+        }
+        return activeLink.url;
+    }
+    // ─── Fluxo normal de contabilização (visitante inédito) ─────────────────────
     let influencerKeyToRollback = null;
     if (influencerSlug) {
         try {
-            // Resolve influencer para contabilizar de forma isolada, não bloqueante
             const influencer = await prisma_1.prisma.influencer.findFirst({
                 where: { slug: influencerSlug, enterpriseId }
             });
@@ -291,8 +320,6 @@ const processClickAndRedirect = async (categoryId, influencerSlug) => {
             }
         }
         catch (error) {
-            // Ignora silenciosamente a falha no incremento do influenciador
-            // O objetivo é NUNCA interromper o clique normal
             console.error(`Erro ao incrementar clique do influenciador ${influencerSlug}:`, error);
         }
     }
@@ -395,7 +422,6 @@ const processClickAndRedirect = async (categoryId, influencerSlug) => {
     }
     catch (error) {
         if (influencerKeyToRollback) {
-            // Faz o rollback do clique do influenciador caso a rotação ou resolução da URL falhe, garantindo consistência
             await redis_1.redis.decr(influencerKeyToRollback).catch(e => console.error("Erro no rollback do influenciador:", e));
         }
         throw error;
@@ -413,6 +439,6 @@ const processClickAndRedirectOnlyEfootball = async () => {
     if (!enterpriseId) {
         throw new appError_1.AppError("EnterpriseId indefinido.", 404);
     }
-    return await (0, exports.processClickAndRedirect)(categoryEfootball.id);
+    return await (0, exports.processClickAndRedirect)(categoryEfootball.id, { shouldCountClick: false });
 };
 exports.processClickAndRedirectOnlyEfootball = processClickAndRedirectOnlyEfootball;

@@ -9,4 +9,5 @@ const authRoutes = (0, express_1.Router)();
 exports.authRoutes = authRoutes;
 authRoutes.post("/register/enterprise", rateLimit_1.authLimiter, auth_controller_1.registerCompany);
 authRoutes.post("/login", rateLimit_1.authLimiter, auth_controller_1.login);
+authRoutes.post("/logout", auth_controller_1.logout);
 authRoutes.get("/me", authenticate_1.authenticate, auth_controller_1.getMe);
