@@ -78,14 +78,60 @@ export function setAuthCookie(res: Response, token: string): void {
     });
 }
 
+export interface VisitorCookiePayload {
+    id: string;
+    categories: Record<string, number>;
+}
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function parseVisitorPayload(rawCookie: string | null): VisitorCookiePayload | null {
+    if (!rawCookie) return null;
+
+    try {
+        const decoded = Buffer.from(rawCookie, "base64").toString("utf8");
+        const parsed = JSON.parse(decoded);
+
+        if (parsed && typeof parsed.id === "string" && parsed.categories !== null && typeof parsed.categories === "object" && !Array.isArray(parsed.categories)) {
+            const now = Date.now();
+            const cleanCategories: Record<string, number> = {};
+            
+            for (const [key, value] of Object.entries(parsed.categories)) {
+                if (typeof value === "number" && isFinite(value) && value >= 0 && value <= now) {
+                    cleanCategories[key] = value;
+                }
+            }
+
+            return {
+                id: parsed.id,
+                categories: cleanCategories
+            };
+        }
+    } catch {
+        // Se falhar o parse JSON/Base64, verificar se é o UUID legado.
+        if (UUID_REGEX.test(rawCookie)) {
+            return {
+                id: rawCookie,
+                categories: {}
+            };
+        }
+    }
+    return null;
+}
+
+export function serializeVisitorPayload(payload: VisitorCookiePayload): string {
+    return Buffer.from(JSON.stringify(payload)).toString("base64");
+}
+
 /**
  * Define o cookie de identificação de visitante na resposta.
- * O cookie é host-only da API: sem atributo Domain explícito.
+ * O cookie armazena o payload serializado em Base64.
  */
-export function setVisitorCookie(res: Response, visitorId: string): void {
+export function setVisitorCookie(res: Response, payload: VisitorCookiePayload): void {
     const isSecure = isSecureEnvironment();
+    const serialized = serializeVisitorPayload(payload);
 
-    res.cookie(VISITOR_COOKIE_NAME, visitorId, {
+    res.cookie(VISITOR_COOKIE_NAME, serialized, {
         httpOnly: true,
         secure: isSecure,
         sameSite: isSecure ? "none" : "lax",

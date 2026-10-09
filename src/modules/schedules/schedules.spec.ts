@@ -1,6 +1,5 @@
 import { createSchedule, getSchedules, getScheduleById, updateSchedule, deleteSchedule } from "./schedules.service";
 import { prisma } from "../../shared/database/prisma";
-import { AppError } from "../../shared/errors/appError";
 import { createScheduleZod, updateScheduleZod } from "../../shared/zod/schedules.zod";
 
 jest.mock("../../shared/database/prisma", () => ({

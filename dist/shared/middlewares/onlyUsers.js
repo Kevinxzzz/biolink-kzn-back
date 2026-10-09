@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.onlyUsers = void 0;
 const appError_1 = require("../errors/appError");
-const onlyUsers = (req, res, next) => {
+const onlyUsers = (req, _res, next) => {
     try {
         if (!req.user) {
             throw new appError_1.AppError("Não autorizado", 401);

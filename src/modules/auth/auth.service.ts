@@ -1,6 +1,5 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { z } from "zod";
 import { env } from "../../shared/config/env";
 import { prisma } from "../../shared/database/prisma";
 import { LoginInput } from "../../shared/types/auth.type"

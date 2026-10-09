@@ -6,7 +6,7 @@ const appError_1 = require("../errors/appError");
  * Middleware para garantir isolamento de dados entre empresas (multi-tenancy).
  * Valida se o enterpriseId do usuário autenticado coincide com o enterpriseId do recurso solicitado.
  */
-const checkEnterprise = (req, res, next) => {
+const checkEnterprise = (req, _res, next) => {
     try {
         if (!req.user) {
             throw new appError_1.AppError("Não autorizado", 401);
