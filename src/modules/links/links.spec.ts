@@ -1,7 +1,6 @@
-import { activateLink, reorderLinks, createLink, getLinks, getLinkById, updateLink, deleteLink, processClickAndRedirect } from "./links.service";
+import { reorderLinks, createLink, getLinks, processClickAndRedirect, activateLink } from "./links.service";
 import { prisma } from "../../shared/database/prisma";
 import { redis } from "../../shared/database/redis";
-import { AppError } from "../../shared/errors/appError";
 import { reorderLinksZod } from "../../shared/zod/links.zod";
 
 jest.mock("../../shared/database/prisma", () => ({

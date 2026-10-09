@@ -185,7 +185,7 @@ const redirect = async (req, res, next) => {
     }
 };
 exports.redirect = redirect;
-const redirectOnlyEfootballFromKzn = async (req, res, next) => {
+const redirectOnlyEfootballFromKzn = async (_req, res, next) => {
     try {
         const result = await linksService.processClickAndRedirectOnlyEfootball();
         return res.redirect(result.url);

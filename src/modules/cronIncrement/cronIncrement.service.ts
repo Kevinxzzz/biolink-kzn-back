@@ -1,6 +1,5 @@
 import { prisma } from "../../shared/database/prisma";
 import { redis } from "../../shared/database/redis";
-import { AppError } from "../../shared/errors/appError";
 import { getTodayBRTReferenceDate } from "../../shared/utils/dateUtils";
 
 const DECR_LUA_SCRIPT = `

@@ -148,6 +148,8 @@ const deleteLink = async (id, enterpriseId) => {
 };
 exports.deleteLink = deleteLink;
 const activateLink = async (id, enterpriseId) => {
+    let categoryKey = "";
+    let compensatedAmount = 0;
     try {
         const linkToActivate = await prisma_1.prisma.enterpriseUrl.findFirst({ where: { id } });
         if (!linkToActivate || linkToActivate.enterpriseId !== enterpriseId) {
@@ -156,8 +158,7 @@ const activateLink = async (id, enterpriseId) => {
         if (!linkToActivate.inRotationPool) {
             throw new appError_1.AppError("Este link não faz parte do pool de rotação e não pode ser ativado manualmente.", 400);
         }
-        const categoryKey = `clicks:${enterpriseId}:${linkToActivate.categoryId}`;
-        let compensatedAmount = 0;
+        categoryKey = `clicks:${enterpriseId}:${linkToActivate.categoryId}`;
         const result = await prisma_1.prisma.$transaction(async (tx) => {
             await tx.$executeRaw `SELECT id FROM "enterprise_category" WHERE "id" = ${linkToActivate.categoryId}::uuid FOR UPDATE`;
             const currentActive = await tx.enterpriseUrl.findFirst({
@@ -210,6 +211,9 @@ const activateLink = async (id, enterpriseId) => {
         return result;
     }
     catch (error) {
+        if (compensatedAmount > 0) {
+            await redis_1.redis.incrby(categoryKey, compensatedAmount);
+        }
         if (error.code === 'P2002') {
             throw new appError_1.AppError("Conflito de concorrência: Apenas um link pode estar ativo", 409);
         }

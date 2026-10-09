@@ -186,7 +186,7 @@ describe("Concurrency Integration Tests", () => {
 
             const originalEval = redis.eval.bind(redis);
             jest.spyOn(redis, 'eval').mockImplementationOnce(async (...args) => {
-                const res = await originalEval(...args);
+                await originalEval(...args);
                 // Simulamos um erro acontecendo logo após a avaliação do redis (ex: falha no COMMIT final)
                 throw new Error("Simulated Database Crash inside transaction");
             });

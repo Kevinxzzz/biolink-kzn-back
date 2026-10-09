@@ -6,7 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.authLimiter = void 0;
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const appError_1 = require("../errors/appError");
-const handler = (req, res, next) => {
+const handler = (_req, _res, next) => {
     next(new appError_1.AppError("Limite de requisições excedido. Tente novamente mais tarde.", 429));
 };
 exports.authLimiter = (0, express_rate_limit_1.default)({

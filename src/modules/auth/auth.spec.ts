@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from "express";
+import { Request, Response } from "express";
 import { login, registerCompany, getMe } from "./auth.controller";
 import { loginIn, registerEnterprise, getAuthenticatedUser } from "./auth.service";
 import { AppError } from "../../shared/errors/appError";

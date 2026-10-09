@@ -163,7 +163,7 @@ export const redirect = async (req: Request, res: Response, next: NextFunction) 
     }
 };
 
-export const redirectOnlyEfootballFromKzn = async (req: Request, res: Response, next: NextFunction) => {
+export const redirectOnlyEfootballFromKzn = async (_req: Request, res: Response, next: NextFunction) => {
     try {
         const result = await linksService.processClickAndRedirectOnlyEfootball();
 
