@@ -107,7 +107,7 @@ export async function resolveUserAuth(token: string, requestDomain: string | nul
  * Exige o token JWT no header Authorization: Bearer <token>.
  * Lança 401/403 se as credenciais forem inválidas ou o tenant não corresponder.
  */
-export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
+export const authenticate = async (req: Request, _res: Response, next: NextFunction) => {
     try {
         const authHeader = req.headers?.authorization;
 

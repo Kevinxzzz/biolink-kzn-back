@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from "express";
+import { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { UserRole } from "@prisma/client";
 import { authenticate } from "./authenticate";
@@ -9,7 +9,6 @@ import { checkEnterprise } from "./checkEnterprise";
 import { errorHandler } from "./errorHandler";
 import { AppError } from "../errors/appError";
 import { prisma } from "../database/prisma";
-import { env } from "../config/env";
 
 jest.mock("../database/prisma", () => ({
     prisma: {

@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { AppError } from "../errors/appError";
 
-export const onlyUsers = (req: Request, res: Response, next: NextFunction) => {
+export const onlyUsers = (req: Request, _res: Response, next: NextFunction) => {
     try {
         if (!req.user) {
             throw new AppError("Não autorizado", 401);

@@ -9,9 +9,9 @@ import { env } from "../config/env";
  */
 export const errorHandler = (
     err: Error,
-    req: Request,
+    _req: Request,
     res: Response,
-    next: NextFunction
+    _next: NextFunction
 ) => {
     if (err instanceof AppError) {
         return res.status(err.statusCode).json({

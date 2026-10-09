@@ -1,7 +1,7 @@
 import { createInfluencer, getInfluencers, getInfluencerById, updateInfluencer, deleteInfluencer } from "./influencer.service";
 import { prisma } from "../../shared/database/prisma";
 import { redis } from "../../shared/database/redis";
-import { createInfluencerZod, updateInfluencerZod } from "../../shared/zod/influencer.zod";
+import { createInfluencerZod } from "../../shared/zod/influencer.zod";
 
 jest.mock("../../shared/database/redis", () => {
     const mPipeline = {

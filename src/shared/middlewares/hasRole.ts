@@ -3,7 +3,7 @@ import { UserRole } from "@prisma/client";
 import { AppError } from "../errors/appError";
 
 export const hasRole = (...roles: UserRole[]) => {
-    return (req: Request, res: Response, next: NextFunction) => {
+    return (req: Request, _res: Response, next: NextFunction) => {
         try {
             if (!req.user) {
                 throw new AppError("Não autorizado", 401);

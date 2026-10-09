@@ -4,7 +4,7 @@ import { createLinkZod, updateLinkZod, reorderLinksZod } from "../../shared/zod/
 import * as linksService from "./links.service";
 import { extractDomain } from "../../shared/utils/domain";
 import { resolveUserAuth } from "../../shared/middlewares/authenticate";
-import { readAuthCookie, readVisitorCookie, setVisitorCookie } from "../../shared/utils/cookie";
+import { readAuthCookie, readVisitorCookie, setVisitorCookie, parseVisitorPayload, VisitorCookiePayload } from "../../shared/utils/cookie";
 
 export const create = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -133,39 +133,41 @@ export const redirect = async (req: Request, res: Response, next: NextFunction) 
 
         // ─── Passo 2: Identificar visitante (se não autenticado) ─────────────
         // Se autenticado, não lemos nem gravamos o cookie de visitante.
-        let visitorId: string | undefined;
+        let visitorPayload: VisitorCookiePayload | undefined;
 
         if (!isAuthenticated) {
-            const existingVisitorId = readVisitorCookie(req);
+            const rawCookie = readVisitorCookie(req);
+            visitorPayload = parseVisitorPayload(rawCookie) || undefined;
 
-            if (existingVisitorId) {
-                visitorId = existingVisitorId;
-            } else {
-                // Gera um UUID opaco, criptograficamente seguro, sem derivar dados do visitante
-                visitorId = crypto.randomUUID();
-                setVisitorCookie(res, visitorId);
+            if (!visitorPayload) {
+                // Gera um payload inicial, sem persistir imediatamente (será persistido se modificado)
+                visitorPayload = { id: crypto.randomUUID(), categories: {} };
             }
         }
 
         // ─── Passo 3: Delegar ao service com as flags de controle ─────────────
-        // O service fará o SET NX antes de qualquer mutação de métricas/rotação.
-        const url = await linksService.processClickAndRedirect(categoryId, {
+        const result = await linksService.processClickAndRedirect(categoryId, {
             influencerSlug,
             shouldCountClick: !isAuthenticated,
-            visitorId,
+            visitorPayload,
         });
 
-        return res.redirect(url);
+        // Se o serviço precisou registrar a categoria no payload, nós o persistimos
+        if (result.updatedVisitorPayload) {
+            setVisitorCookie(res, result.updatedVisitorPayload);
+        }
+
+        return res.redirect(result.url);
     } catch (error) {
         next(error);
     }
 };
 
-export const redirectOnlyEfootballFromKzn = async (req: Request, res: Response, next: NextFunction) => {
+export const redirectOnlyEfootballFromKzn = async (_req: Request, res: Response, next: NextFunction) => {
     try {
-        const url = await linksService.processClickAndRedirectOnlyEfootball();
+        const result = await linksService.processClickAndRedirectOnlyEfootball();
 
-        return res.redirect(url);
+        return res.redirect(result.url);
     } catch (error) {
         next(error);
     }

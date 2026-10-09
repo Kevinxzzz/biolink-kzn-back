@@ -67,7 +67,7 @@ export const getMe = async (req: Request, res: Response, next: NextFunction) => 
  * Encerra a sessão do usuário removendo o cookie de autenticação.
  * O frontend também deve remover o token do localStorage.
  */
-export const logout = async (req: Request, res: Response, next: NextFunction) => {
+export const logout = async (_req: Request, res: Response, next: NextFunction) => {
     try {
         clearAuthCookie(res);
         return res.status(200).json({ message: "Logout realizado com sucesso." });

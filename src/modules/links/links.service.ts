@@ -5,6 +5,7 @@ import { redis } from "../../shared/database/redis";
 import { getNextEligibleLink } from "../../shared/utils/linkUtils";
 import { env } from "../../shared/config/env";
 import { getTodayBRTReferenceDate } from "../../shared/utils/dateUtils";
+import { VisitorCookiePayload } from "../../shared/utils/cookie";
 
 
 const DECR_LUA_SCRIPT = `
@@ -159,6 +160,9 @@ export const deleteLink = async (id: string, enterpriseId: string) => {
 };
 
 export const activateLink = async (id: string, enterpriseId: string) => {
+    let categoryKey = "";
+    let compensatedAmount = 0;
+    
     try {
         const linkToActivate = await prisma.enterpriseUrl.findFirst({ where: { id } });
         if (!linkToActivate || linkToActivate.enterpriseId !== enterpriseId) {
@@ -168,8 +172,7 @@ export const activateLink = async (id: string, enterpriseId: string) => {
             throw new AppError("Este link não faz parte do pool de rotação e não pode ser ativado manualmente.", 400);
         }
 
-        const categoryKey = `clicks:${enterpriseId}:${linkToActivate.categoryId}`;
-        let compensatedAmount = 0;
+        categoryKey = `clicks:${enterpriseId}:${linkToActivate.categoryId}`;
 
         const result = await prisma.$transaction(async (tx) => {
             await tx.$executeRaw`SELECT id FROM "enterprise_category" WHERE "id" = ${linkToActivate.categoryId}::uuid FOR UPDATE`;
@@ -226,6 +229,9 @@ export const activateLink = async (id: string, enterpriseId: string) => {
         });
         return result;
     } catch (error: any) {
+        if (compensatedAmount > 0) {
+            await redis.incrby(categoryKey, compensatedAmount);
+        }
         if (error.code === 'P2002') {
             throw new AppError("Conflito de concorrência: Apenas um link pode estar ativo", 409);
         }
@@ -299,17 +305,15 @@ export const reorderLinks = async (enterpriseId: string, { categoryId, links }: 
  * Durante esse período, um mesmo `visitorId` não gerará novo incremento
  * na mesma categoria, evitando cliques repetitivos e metralhamento de botão.
  */
-const VISITOR_CLICK_DEDUP_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 dias
-
 export const processClickAndRedirect = async (
     categoryId: string,
     options: {
         influencerSlug?: string;
         shouldCountClick: boolean;
-        visitorId?: string;
+        visitorPayload?: VisitorCookiePayload;
     }
-): Promise<string> => {
-    const { influencerSlug, shouldCountClick, visitorId } = options;
+): Promise<{ url: string; updatedVisitorPayload?: VisitorCookiePayload }> => {
+    const { influencerSlug, shouldCountClick, visitorPayload } = options;
 
     const category = await prisma.enterpriseCategory.findUnique({
         where: { id: categoryId }
@@ -321,19 +325,47 @@ export const processClickAndRedirect = async (
 
     const enterpriseId = category.enterpriseId;
 
-    // ─── Guarda de deduplicação: deve acontecer ANTES de qualquer mutação ───────
-    // Usuário autenticado → nunca contabiliza, nunca afeta rotação.
-    // Visitante → tenta reservar o slot no Redis com SET NX.
-    //   - Novo (SET OK):      segue para contabilização e rotação normais.
-    //   - Existente (SET nulo): apenas retorna a URL ativa, sem nenhuma mutação.
     let shouldActuallyCount = false;
+    let updatedVisitorPayload: VisitorCookiePayload | undefined = undefined;
 
-    if (shouldCountClick && visitorId) {
-        const dedupKey = `kzn:dedup:${visitorId}:${categoryId}`;
-        const setResult = await redis.set(dedupKey, "1", "EX", VISITOR_CLICK_DEDUP_TTL_SECONDS, "NX");
-        shouldActuallyCount = setResult === "OK";
+    if (shouldCountClick && visitorPayload) {
+        const now = Date.now();
+        const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+        
+        let payloadModifiedByCleanup = false;
+        const cleanCategories: Record<string, number> = {};
+        
+        for (const [catId, timestamp] of Object.entries(visitorPayload.categories)) {
+            if (timestamp <= now && (now - timestamp < thirtyDaysMs) && timestamp >= 0) {
+                cleanCategories[catId] = timestamp;
+            } else {
+                payloadModifiedByCleanup = true;
+            }
+        }
+        visitorPayload.categories = cleanCategories;
+
+        const lastClickTimestamp = visitorPayload.categories[categoryId];
+
+        if (!lastClickTimestamp) {
+            shouldActuallyCount = true;
+            
+            // Controle de tamanho máximo para evitar crescer indefinidamente
+            const maxCategories = 20;
+            let catEntries = Object.entries(visitorPayload.categories);
+            if (catEntries.length >= maxCategories) {
+                // Ordenar do mais antigo pro mais novo e descartar o mais velho
+                catEntries.sort((a, b) => a[1] - b[1]);
+                const categoriesToKeep = catEntries.slice(catEntries.length - maxCategories + 1);
+                visitorPayload.categories = Object.fromEntries(categoriesToKeep);
+            }
+
+            visitorPayload.categories[categoryId] = now;
+            updatedVisitorPayload = visitorPayload;
+        } else if (payloadModifiedByCleanup) {
+            // Mesmo se não contabilizar novo clique, se houve remoção passiva, mandamos salvar o encolhimento
+            updatedVisitorPayload = visitorPayload;
+        }
     }
-    // shouldCountClick=false (autenticado) → shouldActuallyCount permanece false.
 
     // ─── Busca o link ativo atual da categoria (necessário para todos os casos) ─
     if (!shouldActuallyCount) {
@@ -345,7 +377,7 @@ export const processClickAndRedirect = async (
             throw new AppError("Nenhum link ativo encontrado para esta categoria.", 404);
         }
 
-        return activeLink.url;
+        return { url: activeLink.url, updatedVisitorPayload };
     }
 
     // ─── Fluxo normal de contabilização (visitante inédito) ─────────────────────
@@ -384,7 +416,7 @@ export const processClickAndRedirect = async (
 
         if (!config) {
             await redis.incr(key);
-            return link.url;
+            return { url: link.url, updatedVisitorPayload };
         }
 
         let shouldRotate = false;
@@ -394,7 +426,7 @@ export const processClickAndRedirect = async (
             if (luaResult === -1) {
                 shouldRotate = true;
             } else {
-                return link.url;
+                return { url: link.url, updatedVisitorPayload };
             }
         }
 
@@ -469,7 +501,7 @@ export const processClickAndRedirect = async (
                     await redis.incr(key);
                 }
 
-                return result.link.url;
+                return { url: result.link.url, updatedVisitorPayload };
             } catch (err) {
                 if (compensatedAmount > 0) {
                     await redis.incrby(key, compensatedAmount);
@@ -481,7 +513,7 @@ export const processClickAndRedirect = async (
         // Fluxo Normal (MANUAL, TIMER, SCHEDULE)
         await redis.incr(key);
 
-        return link.url;
+        return { url: link.url, updatedVisitorPayload };
     } catch (error) {
         if (influencerKeyToRollback) {
             await redis.decr(influencerKeyToRollback).catch(e => console.error("Erro no rollback do influenciador:", e));
@@ -491,7 +523,7 @@ export const processClickAndRedirect = async (
 };
 
 
-export const processClickAndRedirectOnlyEfootball = async (): Promise<string> => {
+export const processClickAndRedirectOnlyEfootball = async (): Promise<{ url: string; updatedVisitorPayload?: VisitorCookiePayload }> => {
     const categoryEfootball = await prisma.enterpriseCategory.findFirst({
         where: { name: "efootball" }
     });
