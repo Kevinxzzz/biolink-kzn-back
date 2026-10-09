@@ -8,7 +8,7 @@ const env_1 = require("../config/env");
  * Trata exceções AppError retornando o statusCode e mensagem correspondente.
  * Trata erros não previstos retornando HTTP 500 sem expor detalhes sensíveis/stack traces.
  */
-const errorHandler = (err, req, res, next) => {
+const errorHandler = (err, _req, res, _next) => {
     if (err instanceof appError_1.AppError) {
         return res.status(err.statusCode).json({
             message: err.message

@@ -5,7 +5,7 @@ import { AppError } from "../errors/appError";
  * Middleware para garantir isolamento de dados entre empresas (multi-tenancy).
  * Valida se o enterpriseId do usuário autenticado coincide com o enterpriseId do recurso solicitado.
  */
-export const checkEnterprise = (req: Request, res: Response, next: NextFunction) => {
+export const checkEnterprise = (req: Request, _res: Response, next: NextFunction) => {
     try {
         if (!req.user) {
             throw new AppError("Não autorizado", 401);

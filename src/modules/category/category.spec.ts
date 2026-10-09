@@ -1,6 +1,6 @@
 import { createCategory, getCategories, getCategoryById, updateCategory, deleteCategory, getCategoryRotationConfig, updateCategoryRotationConfig, updateAllCategoriesRotationConfig, getRotationType } from "./category.service";
 import { prisma } from "../../shared/database/prisma";
-import { createCategoryZod, updateCategoryZod } from "../../shared/zod/category.zod";
+import { createCategoryZod } from "../../shared/zod/category.zod";
 
 jest.mock("../../shared/database/prisma", () => ({
     prisma: {
