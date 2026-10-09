@@ -282,7 +282,8 @@ describe("Auth Module - Login", () => {
         };
         mockRes = {
             status: jest.fn().mockReturnThis(),
-            json: jest.fn()
+            json: jest.fn(),
+            cookie: jest.fn()
         };
         mockNext = jest.fn();
         prisma_1.prisma.application.findUnique.mockResolvedValue({

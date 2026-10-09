@@ -159,26 +159,26 @@ const redirect = async (req, res, next) => {
         }
         // ─── Passo 2: Identificar visitante (se não autenticado) ─────────────
         // Se autenticado, não lemos nem gravamos o cookie de visitante.
-        let visitorId;
+        let visitorPayload;
         if (!isAuthenticated) {
-            const existingVisitorId = (0, cookie_1.readVisitorCookie)(req);
-            if (existingVisitorId) {
-                visitorId = existingVisitorId;
-            }
-            else {
-                // Gera um UUID opaco, criptograficamente seguro, sem derivar dados do visitante
-                visitorId = crypto.randomUUID();
-                (0, cookie_1.setVisitorCookie)(res, visitorId);
+            const rawCookie = (0, cookie_1.readVisitorCookie)(req);
+            visitorPayload = (0, cookie_1.parseVisitorPayload)(rawCookie) || undefined;
+            if (!visitorPayload) {
+                // Gera um payload inicial, sem persistir imediatamente (será persistido se modificado)
+                visitorPayload = { id: crypto.randomUUID(), categories: {} };
             }
         }
         // ─── Passo 3: Delegar ao service com as flags de controle ─────────────
-        // O service fará o SET NX antes de qualquer mutação de métricas/rotação.
-        const url = await linksService.processClickAndRedirect(categoryId, {
+        const result = await linksService.processClickAndRedirect(categoryId, {
             influencerSlug,
             shouldCountClick: !isAuthenticated,
-            visitorId,
+            visitorPayload,
         });
-        return res.redirect(url);
+        // Se o serviço precisou registrar a categoria no payload, nós o persistimos
+        if (result.updatedVisitorPayload) {
+            (0, cookie_1.setVisitorCookie)(res, result.updatedVisitorPayload);
+        }
+        return res.redirect(result.url);
     }
     catch (error) {
         next(error);
@@ -187,8 +187,8 @@ const redirect = async (req, res, next) => {
 exports.redirect = redirect;
 const redirectOnlyEfootballFromKzn = async (req, res, next) => {
     try {
-        const url = await linksService.processClickAndRedirectOnlyEfootball();
-        return res.redirect(url);
+        const result = await linksService.processClickAndRedirectOnlyEfootball();
+        return res.redirect(result.url);
     }
     catch (error) {
         next(error);
