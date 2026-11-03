@@ -185,9 +185,10 @@ export const changeNextGroup = async (req: Request, res: Response, next: NextFun
     }
 };
 
-export const redirectOnlyEfootball = async (_req: Request, res: Response, next: NextFunction) => {
+export const redirectOnlyEfootball = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const result = await linksService.processClickAndRedirectOnlyEfootball();
+        const domain = extractDomain(req);
+        const result = await linksService.processClickAndRedirectOnlyEfootball(domain!);
 
         return res.redirect(result.url);
     } catch (error) {
