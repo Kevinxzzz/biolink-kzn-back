@@ -42,7 +42,7 @@ const linksController = __importStar(require("./links.controller"));
 const linksRoutes = (0, express_1.Router)();
 exports.linksRoutes = linksRoutes;
 // Rota temporária, quando o cliente quiser a melhoria para multi categorias eu utilizo a rota normal.
-linksRoutes.get("/redirect/kzngg/efootball", linksController.redirectOnlyEfootballFromKzn);
+linksRoutes.get("/redirect/efootball", linksController.redirectOnlyEfootball);
 // Rota pública para redirecionamento e contabilização de cliques
 linksRoutes.get("/redirect/:categoryId", linksController.redirect);
 // Middleware aplicado a todas as rotas do módulo de links (autenticadas)
@@ -50,6 +50,8 @@ linksRoutes.use(authenticate_1.authenticate);
 linksRoutes.use((0, hasRole_1.hasRole)(client_1.UserRole.OWNER, client_1.UserRole.ADMIN));
 linksRoutes.post("/", linksController.create);
 linksRoutes.get("/", linksController.list);
+linksRoutes.get("/efootball/alecio", linksController.getEfootballManagerAlecio);
+linksRoutes.put("/change-next-group", linksController.changeNextGroup);
 linksRoutes.get("/:id", linksController.getById);
 linksRoutes.patch("/reorder", linksController.reorder);
 linksRoutes.patch("/:id", linksController.update);

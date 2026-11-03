@@ -1,6 +1,42 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 const links_service_1 = require("./links.service");
+const linksController = __importStar(require("./links.controller"));
+const links_router_1 = require("./links.router");
+const dateUtils_1 = require("../../shared/utils/dateUtils");
 const prisma_1 = require("../../shared/database/prisma");
 const redis_1 = require("../../shared/database/redis");
 const links_zod_1 = require("../../shared/zod/links.zod");
@@ -28,6 +64,7 @@ jest.mock("../../shared/database/prisma", () => ({
             findFirst: jest.fn()
         },
         enterpriseCountDailyClicks: {
+            findFirst: jest.fn(),
             upsert: jest.fn()
         },
         urlCountDailyClicks: {
@@ -64,6 +101,7 @@ describe("Links Module", () => {
                 updateMany: jest.fn()
             },
             enterpriseCountDailyClicks: {
+                findFirst: jest.fn(),
                 upsert: jest.fn()
             },
             urlCountDailyClicks: {
@@ -590,6 +628,375 @@ describe("Links Module", () => {
                 expect(redis_1.redis.incr).not.toHaveBeenCalled();
                 expect(updatedVisitorPayload).toBeUndefined();
                 expect(url).toBe("http://link1.com");
+            });
+        });
+    });
+    describe("Painel de Gerenciamento Exclusivo do Alecio (efootball)", () => {
+        const enterpriseId = "ent-alecio-1";
+        const efootballCategoryId = "cat-efootball-1";
+        beforeEach(() => {
+            jest.clearAllMocks();
+        });
+        it("deve retornar corretamente os links da categoria efootball, o link ativo e os cards de status", async () => {
+            const today = (0, dateUtils_1.getTodayBRTReferenceDate)();
+            prisma_1.prisma.enterpriseCategory.findFirst.mockResolvedValue({
+                id: efootballCategoryId,
+                name: "efootball",
+                enterpriseId,
+            });
+            prisma_1.prisma.enterpriseUrl.findMany.mockResolvedValue([
+                {
+                    id: "link-1",
+                    title: "Grupo 1",
+                    url: "https://grupo1.com",
+                    countClicks: 40,
+                    active: true,
+                    order: 1,
+                    inRotationPool: true,
+                    categoryId: efootballCategoryId,
+                },
+                {
+                    id: "link-2",
+                    title: "Grupo 2",
+                    url: "https://grupo2.com",
+                    countClicks: 10,
+                    active: false,
+                    order: 2,
+                    inRotationPool: true,
+                    categoryId: efootballCategoryId,
+                },
+            ]);
+            prisma_1.prisma.categoryRotation.findFirst.mockResolvedValue({
+                categoryId: efootballCategoryId,
+                toggleType: "LIMITCLICKS",
+                limitClicks: 100,
+            });
+            prisma_1.prisma.enterpriseCountDailyClicks.findFirst.mockResolvedValue({
+                enterpriseId,
+                referenceDate: today,
+                dailyClicks: 20,
+            });
+            redis_1.redis.get.mockResolvedValue("5");
+            const result = await (0, links_service_1.getEfootballManagerData)(enterpriseId);
+            expect(prisma_1.prisma.enterpriseCategory.findFirst).toHaveBeenCalledWith({
+                where: { name: "efootball", enterpriseId },
+            });
+            expect(prisma_1.prisma.enterpriseUrl.findMany).toHaveBeenCalledWith({
+                where: { enterpriseId, categoryId: efootballCategoryId },
+                select: expect.any(Object),
+                orderBy: [{ categoryId: "asc" }, { order: "asc" }],
+            });
+            expect(prisma_1.prisma.enterpriseCountDailyClicks.findFirst).toHaveBeenCalledWith({
+                where: { enterpriseId, referenceDate: today },
+            });
+            expect(prisma_1.prisma.categoryRotation.findFirst).toHaveBeenCalledWith({
+                where: { categoryId: efootballCategoryId },
+            });
+            expect(result).toEqual({
+                categoryId: efootballCategoryId,
+                links: [
+                    {
+                        id: "link-1",
+                        title: "Grupo 1",
+                        url: "https://grupo1.com",
+                        countClicks: 45,
+                        active: true,
+                        order: 1,
+                        inRotationPool: true,
+                        categoryId: efootballCategoryId,
+                    },
+                    {
+                        id: "link-2",
+                        title: "Grupo 2",
+                        url: "https://grupo2.com",
+                        countClicks: 10,
+                        active: false,
+                        order: 2,
+                        inRotationPool: true,
+                        categoryId: efootballCategoryId,
+                    },
+                ],
+                activeLink: {
+                    id: "link-1",
+                    title: "Grupo 1",
+                    url: "https://grupo1.com",
+                    countClicks: 45,
+                    active: true,
+                    order: 1,
+                    inRotationPool: true,
+                    categoryId: efootballCategoryId,
+                },
+                status: {
+                    totalLinks: 2,
+                    dailyClicks: 25,
+                    rotationLimit: 100,
+                    activeLink: "Grupo 1",
+                },
+            });
+        });
+        it("deve tratar adequadamente empresa sem links cadastrados, retornando mesmo assim o categoryId", async () => {
+            prisma_1.prisma.enterpriseCategory.findFirst.mockResolvedValue({
+                id: efootballCategoryId,
+                name: "efootball",
+                enterpriseId,
+            });
+            prisma_1.prisma.enterpriseUrl.findMany.mockResolvedValue([]);
+            prisma_1.prisma.categoryRotation.findFirst.mockResolvedValue({
+                categoryId: efootballCategoryId,
+                toggleType: "LIMITCLICKS",
+                limitClicks: 50,
+            });
+            prisma_1.prisma.enterpriseCountDailyClicks.findFirst.mockResolvedValue(null);
+            redis_1.redis.get.mockResolvedValue(null);
+            const result = await (0, links_service_1.getEfootballManagerData)(enterpriseId);
+            expect(result).toEqual({
+                categoryId: efootballCategoryId,
+                links: [],
+                activeLink: null,
+                status: {
+                    totalLinks: 0,
+                    dailyClicks: 0,
+                    rotationLimit: 50,
+                    activeLink: null,
+                },
+            });
+        });
+        it("deve tratar adequadamente empresa sem link ativo", async () => {
+            prisma_1.prisma.enterpriseCategory.findFirst.mockResolvedValue({
+                id: efootballCategoryId,
+                name: "efootball",
+                enterpriseId,
+            });
+            prisma_1.prisma.enterpriseUrl.findMany.mockResolvedValue([
+                {
+                    id: "link-1",
+                    title: "Grupo 1",
+                    url: "https://grupo1.com",
+                    countClicks: 12,
+                    active: false,
+                    order: 1,
+                    inRotationPool: true,
+                    categoryId: efootballCategoryId,
+                },
+            ]);
+            prisma_1.prisma.categoryRotation.findFirst.mockResolvedValue({
+                categoryId: efootballCategoryId,
+                toggleType: "MANUAL",
+                limitClicks: null,
+            });
+            prisma_1.prisma.enterpriseCountDailyClicks.findFirst.mockResolvedValue({
+                dailyClicks: 12,
+            });
+            redis_1.redis.get.mockResolvedValue(null);
+            const result = await (0, links_service_1.getEfootballManagerData)(enterpriseId);
+            expect(result.activeLink).toBeNull();
+            expect(result.status).toEqual({
+                totalLinks: 1,
+                dailyClicks: 12,
+                rotationLimit: 0,
+                activeLink: null,
+            });
+        });
+        it("deve retornar rotationLimit como 0 quando não houver configuração de rotação", async () => {
+            prisma_1.prisma.enterpriseCategory.findFirst.mockResolvedValue({
+                id: efootballCategoryId,
+                name: "efootball",
+                enterpriseId,
+            });
+            prisma_1.prisma.enterpriseUrl.findMany.mockResolvedValue([]);
+            prisma_1.prisma.categoryRotation.findFirst.mockResolvedValue(null);
+            prisma_1.prisma.enterpriseCountDailyClicks.findFirst.mockResolvedValue(null);
+            redis_1.redis.get.mockResolvedValue(null);
+            const result = await (0, links_service_1.getEfootballManagerData)(enterpriseId);
+            expect(result.status.rotationLimit).toBe(0);
+        });
+        it("deve garantir isolamento entre empresas diferentes e lançar 404 se a categoria efootball não existir para a empresa", async () => {
+            prisma_1.prisma.enterpriseCategory.findFirst.mockResolvedValue(null);
+            await expect((0, links_service_1.getEfootballManagerData)("outra-empresa-id")).rejects.toMatchObject({
+                statusCode: 404,
+                message: "Categoria efootball não encontrada para esta empresa.",
+            });
+            expect(prisma_1.prisma.enterpriseCategory.findFirst).toHaveBeenCalledWith({
+                where: { name: "efootball", enterpriseId: "outra-empresa-id" },
+            });
+            expect(prisma_1.prisma.enterpriseUrl.findMany).not.toHaveBeenCalled();
+        });
+        it("controller getEfootballManagerAlecio deve usar o enterpriseId do usuário autenticado e retornar status 200", async () => {
+            prisma_1.prisma.enterpriseCategory.findFirst.mockResolvedValue({
+                id: efootballCategoryId,
+                name: "efootball",
+                enterpriseId,
+            });
+            prisma_1.prisma.enterpriseUrl.findMany.mockResolvedValue([]);
+            prisma_1.prisma.categoryRotation.findFirst.mockResolvedValue(null);
+            prisma_1.prisma.enterpriseCountDailyClicks.findFirst.mockResolvedValue(null);
+            redis_1.redis.get.mockResolvedValue(null);
+            const req = { user: { id: "user-1", enterpriseId } };
+            const res = {
+                status: jest.fn().mockReturnThis(),
+                json: jest.fn().mockReturnThis(),
+            };
+            const next = jest.fn();
+            await linksController.getEfootballManagerAlecio(req, res, next);
+            expect(res.status).toHaveBeenCalledWith(200);
+            expect(res.json).toHaveBeenCalledWith({
+                categoryId: efootballCategoryId,
+                links: [],
+                activeLink: null,
+                status: {
+                    totalLinks: 0,
+                    dailyClicks: 0,
+                    rotationLimit: 0,
+                    activeLink: null,
+                },
+            });
+            expect(next).not.toHaveBeenCalled();
+        });
+        it("controller getEfootballManagerAlecio deve repassar erro para next caso ocorra falha", async () => {
+            prisma_1.prisma.enterpriseCategory.findFirst.mockResolvedValue(null);
+            const req = { user: { id: "user-1", enterpriseId } };
+            const res = {
+                status: jest.fn().mockReturnThis(),
+                json: jest.fn().mockReturnThis(),
+            };
+            const next = jest.fn();
+            await linksController.getEfootballManagerAlecio(req, res, next);
+            expect(next).toHaveBeenCalledWith(expect.objectContaining({
+                statusCode: 404,
+                message: "Categoria efootball não encontrada para esta empresa.",
+            }));
+        });
+        it("rota GET /efootball/alecio deve estar registrada no router antes de /:id", () => {
+            const stack = links_router_1.linksRoutes.stack;
+            const efootballIndex = stack.findIndex((layer) => layer.route?.path === "/efootball/alecio" && layer.route?.methods?.get);
+            const getByIdIndex = stack.findIndex((layer) => layer.route?.path === "/:id" && layer.route?.methods?.get);
+            expect(efootballIndex).toBeGreaterThan(-1);
+            expect(efootballIndex).toBeLessThan(getByIdIndex);
+        });
+        describe("Simulação de Clique (change-next-group)", () => {
+            it("deve incrementar clique no Redis sem atualizar PostgreSQL quando limite não foi atingido", async () => {
+                prisma_1.prisma.enterpriseCategory.findFirst.mockResolvedValue({
+                    id: efootballCategoryId,
+                    name: "efootball",
+                    enterpriseId,
+                });
+                prisma_1.prisma.enterpriseCategory.findUnique.mockResolvedValue({
+                    id: efootballCategoryId,
+                    name: "efootball",
+                    enterpriseId,
+                });
+                prisma_1.prisma.enterpriseUrl.findFirst.mockResolvedValue({
+                    id: "link-1",
+                    url: "https://grupo1.com",
+                    countClicks: 10,
+                    order: 1,
+                });
+                prisma_1.prisma.categoryRotation.findFirst.mockResolvedValue({
+                    categoryId: efootballCategoryId,
+                    toggleType: "LIMITCLICKS",
+                    limitClicks: 100,
+                });
+                redis_1.redis.eval.mockResolvedValue(1);
+                const result = await (0, links_service_1.simulateEfootballClick)(enterpriseId);
+                expect(prisma_1.prisma.enterpriseCategory.findFirst).toHaveBeenCalledWith({
+                    where: { name: "efootball", enterpriseId },
+                });
+                expect(redis_1.redis.eval).toHaveBeenCalledWith(expect.any(String), 1, `clicks:${enterpriseId}:${efootballCategoryId}`, 10, 100);
+                expect(mockTx.enterpriseUrl.update).not.toHaveBeenCalled();
+                expect(result).toEqual({ status: 200, url: "https://grupo1.com" });
+            });
+            it("deve rotacionar para o próximo link quando LIMITCLICKS for atingido na simulação", async () => {
+                prisma_1.prisma.enterpriseCategory.findFirst.mockResolvedValue({
+                    id: efootballCategoryId,
+                    name: "efootball",
+                    enterpriseId,
+                });
+                prisma_1.prisma.enterpriseCategory.findUnique.mockResolvedValue({
+                    id: efootballCategoryId,
+                    name: "efootball",
+                    enterpriseId,
+                });
+                prisma_1.prisma.enterpriseUrl.findFirst.mockResolvedValue({
+                    id: "link-1",
+                    url: "https://grupo1.com",
+                    countClicks: 80,
+                    order: 1,
+                });
+                prisma_1.prisma.categoryRotation.findFirst.mockResolvedValue({
+                    categoryId: efootballCategoryId,
+                    toggleType: "LIMITCLICKS",
+                    limitClicks: 100,
+                });
+                redis_1.redis.eval.mockResolvedValue(-1);
+                redis_1.redis.get.mockResolvedValue("20");
+                mockTx.enterpriseUrl.findFirst.mockResolvedValue({ id: "link-1" });
+                mockTx.enterpriseUrl.findMany.mockResolvedValue([
+                    { id: "link-1", order: 1 },
+                    { id: "link-2", url: "https://grupo2.com", order: 2 },
+                ]);
+                mockTx.enterpriseUrl.update.mockImplementation(({ data }) => {
+                    if (data.active)
+                        return { id: "link-2", url: "https://grupo2.com" };
+                    return { id: "link-1" };
+                });
+                const result = await (0, links_service_1.simulateEfootballClick)(enterpriseId);
+                expect(mockTx.enterpriseUrl.update).toHaveBeenCalledWith({
+                    where: { id: "link-1" },
+                    data: { active: false, countClicks: 100, updateAt: expect.any(Date) },
+                });
+                expect(mockTx.enterpriseUrl.update).toHaveBeenCalledWith({
+                    where: { id: "link-2" },
+                    data: { active: true, countClicks: 0, updateAt: expect.any(Date) },
+                });
+                expect(redis_1.redis.incr).toHaveBeenCalledWith(`clicks:${enterpriseId}:${efootballCategoryId}`);
+                expect(result).toEqual({ status: 200, url: "https://grupo2.com" });
+            });
+            it("deve lançar 404 se a categoria efootball não existir para a empresa na simulação", async () => {
+                prisma_1.prisma.enterpriseCategory.findFirst.mockResolvedValue(null);
+                await expect((0, links_service_1.simulateEfootballClick)("outra-empresa")).rejects.toMatchObject({
+                    statusCode: 404,
+                    message: "Categoria efootball não encontrada para esta empresa.",
+                });
+            });
+            it("controller changeNextGroup deve responder status 200 com JSON sem redirecionar o navegador", async () => {
+                prisma_1.prisma.enterpriseCategory.findFirst.mockResolvedValue({
+                    id: efootballCategoryId,
+                    name: "efootball",
+                    enterpriseId,
+                });
+                prisma_1.prisma.enterpriseCategory.findUnique.mockResolvedValue({
+                    id: efootballCategoryId,
+                    name: "efootball",
+                    enterpriseId,
+                });
+                prisma_1.prisma.enterpriseUrl.findFirst.mockResolvedValue({
+                    id: "link-1",
+                    url: "https://grupo1.com",
+                    countClicks: 5,
+                    order: 1,
+                });
+                prisma_1.prisma.categoryRotation.findFirst.mockResolvedValue({
+                    categoryId: efootballCategoryId,
+                    toggleType: "MANUAL",
+                });
+                const req = { user: { id: "user-1", enterpriseId } };
+                const res = {
+                    status: jest.fn().mockReturnThis(),
+                    json: jest.fn().mockReturnThis(),
+                    redirect: jest.fn(),
+                };
+                const next = jest.fn();
+                await linksController.changeNextGroup(req, res, next);
+                expect(res.redirect).not.toHaveBeenCalled();
+                expect(res.status).toHaveBeenCalledWith(200);
+                expect(res.json).toHaveBeenCalledWith({ status: 200, url: "https://grupo1.com" });
+            });
+            it("rota PUT /change-next-group deve estar registrada no router antes de /:id", () => {
+                const stack = links_router_1.linksRoutes.stack;
+                const changeNextIndex = stack.findIndex((layer) => layer.route?.path === "/change-next-group" && layer.route?.methods?.put);
+                const getByIdIndex = stack.findIndex((layer) => layer.route?.path === "/:id" && layer.route?.methods?.get);
+                expect(changeNextIndex).toBeGreaterThan(-1);
+                expect(changeNextIndex).toBeLessThan(getByIdIndex);
             });
         });
     });

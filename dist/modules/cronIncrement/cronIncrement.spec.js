@@ -33,6 +33,7 @@ jest.mock("../../shared/database/redis", () => ({
 describe("CronIncrement Module (Etapa 2) - Consolidação", () => {
     let mockTx;
     beforeEach(() => {
+        jest.spyOn(console, "error").mockImplementation(() => { });
         mockTx = {
             $executeRaw: jest.fn(),
             enterpriseUrl: {
