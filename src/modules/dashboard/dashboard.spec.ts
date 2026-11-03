@@ -1,5 +1,5 @@
 import { getDashboardService } from "./dashboard.service";
-import { prisma } from "../../shared/database/prisma";
+import { prisma, pool } from "../../shared/database/prisma";
 import { redis } from "../../shared/database/redis";
 import { getTodayBRTReferenceDate } from "../../shared/utils/dateUtils";
 import { getDashboardSchema } from "../../shared/zod/dashboard.zod";
@@ -16,16 +16,19 @@ describe("Dashboard Analytics Service", () => {
     });
 
     afterAll(async () => {
-        await prisma.enterprise.deleteMany({});
+        await prisma.enterprise.deleteMany({ where: { id: { in: [enterpriseAId, enterpriseBId] } } });
         const keys = await redis.keys("clicks:*");
         if (keys.length > 0) await redis.del(keys);
         const infKeys = await redis.keys("influencer_clicks:*");
         if (infKeys.length > 0) await redis.del(infKeys);
+        await prisma.$disconnect();
+        await pool.end();
+        await redis.quit();
     });
 
     beforeEach(async () => {
-        await prisma.enterpriseCountDailyClicks.deleteMany({});
-        await prisma.urlCountDailyClicks.deleteMany({});
+        await prisma.enterpriseCountDailyClicks.deleteMany({ where: { enterpriseId: { in: [enterpriseAId, enterpriseBId] } } });
+        await prisma.urlCountDailyClicks.deleteMany({ where: { enterpriseId: { in: [enterpriseAId, enterpriseBId] } } });
         await prisma.influencerCountDailyClicks.deleteMany({});
 
         const keys = await redis.keys("clicks:*");

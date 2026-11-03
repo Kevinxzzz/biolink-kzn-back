@@ -142,10 +142,12 @@ describe("Influencer Module", () => {
             expect(result?.counterEntries).toBe(107);
         });
         it("5b. deve buscar um influenciador pelo ID ignorando falha no redis", async () => {
+            const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => { });
             prisma_1.prisma.influencer.findFirst.mockResolvedValue({ id: "inf1", counterEntries: 100 });
             redis_1.redis.get.mockRejectedValueOnce(new Error("Redis error"));
             const result = await (0, influencer_service_1.getInfluencerById)("inf1", "ent1");
             expect(result?.counterEntries).toBe(100);
+            consoleSpy.mockRestore();
         });
         it("6. deve impedir de buscar influenciador de outro tenant e retornar 404", async () => {
             prisma_1.prisma.influencer.findFirst.mockResolvedValue(null);

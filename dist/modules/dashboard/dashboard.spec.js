@@ -15,17 +15,20 @@ describe("Dashboard Analytics Service", () => {
         enterpriseBId = entB.id;
     });
     afterAll(async () => {
-        await prisma_1.prisma.enterprise.deleteMany({});
+        await prisma_1.prisma.enterprise.deleteMany({ where: { id: { in: [enterpriseAId, enterpriseBId] } } });
         const keys = await redis_1.redis.keys("clicks:*");
         if (keys.length > 0)
             await redis_1.redis.del(keys);
         const infKeys = await redis_1.redis.keys("influencer_clicks:*");
         if (infKeys.length > 0)
             await redis_1.redis.del(infKeys);
+        await prisma_1.prisma.$disconnect();
+        await prisma_1.pool.end();
+        await redis_1.redis.quit();
     });
     beforeEach(async () => {
-        await prisma_1.prisma.enterpriseCountDailyClicks.deleteMany({});
-        await prisma_1.prisma.urlCountDailyClicks.deleteMany({});
+        await prisma_1.prisma.enterpriseCountDailyClicks.deleteMany({ where: { enterpriseId: { in: [enterpriseAId, enterpriseBId] } } });
+        await prisma_1.prisma.urlCountDailyClicks.deleteMany({ where: { enterpriseId: { in: [enterpriseAId, enterpriseBId] } } });
         await prisma_1.prisma.influencerCountDailyClicks.deleteMany({});
         const keys = await redis_1.redis.keys("clicks:*");
         if (keys.length > 0)

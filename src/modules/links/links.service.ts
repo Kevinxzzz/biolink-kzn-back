@@ -162,7 +162,7 @@ export const deleteLink = async (id: string, enterpriseId: string) => {
 export const activateLink = async (id: string, enterpriseId: string) => {
     let categoryKey = "";
     let compensatedAmount = 0;
-    
+
     try {
         const linkToActivate = await prisma.enterpriseUrl.findFirst({ where: { id } });
         if (!linkToActivate || linkToActivate.enterpriseId !== enterpriseId) {
@@ -331,10 +331,10 @@ export const processClickAndRedirect = async (
     if (shouldCountClick && visitorPayload) {
         const now = Date.now();
         const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
-        
+
         let payloadModifiedByCleanup = false;
         const cleanCategories: Record<string, number> = {};
-        
+
         for (const [catId, timestamp] of Object.entries(visitorPayload.categories)) {
             if (timestamp <= now && (now - timestamp < thirtyDaysMs) && timestamp >= 0) {
                 cleanCategories[catId] = timestamp;
@@ -348,7 +348,7 @@ export const processClickAndRedirect = async (
 
         if (!lastClickTimestamp) {
             shouldActuallyCount = true;
-            
+
             // Controle de tamanho máximo para evitar crescer indefinidamente
             const maxCategories = 20;
             let catEntries = Object.entries(visitorPayload.categories);
@@ -523,19 +523,98 @@ export const processClickAndRedirect = async (
 };
 
 
-export const processClickAndRedirectOnlyEfootball = async (): Promise<{ url: string; updatedVisitorPayload?: VisitorCookiePayload }> => {
+export const processClickAndRedirectOnlyEfootball = async (domain: string): Promise<{ url: string; updatedVisitorPayload?: VisitorCookiePayload }> => {
+
+    const app = await prisma.application.findFirst({
+        where: {
+            domain
+        }
+    });
+
+    if (!app) {
+        throw new AppError("aplicação não cadastrada.", 404);
+
+    };
+
+    const enterprise = await prisma.enterprise.findFirst({
+        where: {
+            applicationId: app?.id
+        }
+    });
+
+    if (!enterprise) {
+        throw new AppError("Empresa não cadastrada.", 404);
+
+    };
     const categoryEfootball = await prisma.enterpriseCategory.findFirst({
-        where: { name: "efootball" }
+        where: {
+            name: "efootball",
+            enterpriseId: enterprise!.id
+        }
     });
 
     if (!categoryEfootball) {
         throw new AppError("Categoria efootball não cadastrada.", 404);
-    }
-
-    const enterpriseId = env.ENTERPRISE_ID_KZN;
-    if (!enterpriseId) {
-        throw new AppError("EnterpriseId indefinido.", 404);
-    }
+    };
 
     return await processClickAndRedirect(categoryEfootball.id, { shouldCountClick: false });
+};
+
+export const simulateEfootballClick = async (enterpriseId: string): Promise<{ status: number; url: string }> => {
+    const category = await prisma.enterpriseCategory.findFirst({
+        where: { name: "efootball", enterpriseId }
+    });
+
+    if (!category) {
+        throw new AppError("Categoria efootball não encontrada para esta empresa.", 404);
+    }
+
+    const result = await processClickAndRedirect(category.id, {
+        shouldCountClick: true,
+        visitorPayload: { id: "simulate-click", categories: {} },
+    });
+
+    return { status: 200, url: result.url };
+};
+
+export const getEfootballManagerData = async (enterpriseId: string) => {
+    const category = await prisma.enterpriseCategory.findFirst({
+        where: { name: "efootball", enterpriseId }
+    });
+
+    if (!category) {
+        throw new AppError("Categoria efootball não encontrada para esta empresa.", 404);
+    }
+
+    const referenceDate = getTodayBRTReferenceDate();
+
+    const [links, rotation, dailyClicksRecord, redisCountStr] = await Promise.all([
+        getLinks(enterpriseId, category.id),
+        prisma.categoryRotation.findFirst({
+            where: { categoryId: category.id }
+        }),
+        prisma.enterpriseCountDailyClicks.findFirst({
+            where: { enterpriseId, referenceDate }
+        }),
+        redis.get(`clicks:${enterpriseId}:${category.id}`)
+    ]);
+
+    const activeLink = links.find((link) => link.active) ?? null;
+    const redisPending = redisCountStr ? parseInt(redisCountStr, 10) : 0;
+    const validRedisPending = isNaN(redisPending) ? 0 : redisPending;
+    const dailyClicks = (dailyClicksRecord?.dailyClicks ?? 0) + validRedisPending;
+    const rotationLimit = rotation?.limitClicks ?? 0;
+
+    return {
+        categoryId: category.id,
+        links,
+        activeLink,
+        status: {
+            totalLinks: links.length,
+            dailyClicks,
+            rotationLimit,
+            activeLink: activeLink ? activeLink.title : null,
+        },
+    };
+
 };
