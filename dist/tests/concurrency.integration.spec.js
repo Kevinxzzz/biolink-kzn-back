@@ -154,6 +154,7 @@ describe("Concurrency Integration Tests", () => {
     });
     describe("3. Crash Simulate entre Redis e PostgreSQL", () => {
         it("deve acionar compensação do At-Least-Once se PostgreSQL falhar após decremento do Redis", async () => {
+            jest.spyOn(console, "error").mockImplementation(() => { });
             const key = `clicks:${enterpriseId}:${categoryId}`;
             await redis_1.redis.set(key, 100);
             const originalEval = redis_1.redis.eval.bind(redis_1.redis);
@@ -184,6 +185,6 @@ describe("Concurrency Integration Tests", () => {
         }
         await prisma_1.prisma.$disconnect();
         await prisma_1.pool.end();
-        redis_1.redis.disconnect();
+        await redis_1.redis.quit();
     });
 });

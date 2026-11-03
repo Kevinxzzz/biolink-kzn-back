@@ -163,9 +163,32 @@ export const redirect = async (req: Request, res: Response, next: NextFunction) 
     }
 };
 
-export const redirectOnlyEfootballFromKzn = async (_req: Request, res: Response, next: NextFunction) => {
+export const getEfootballManagerAlecio = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const result = await linksService.processClickAndRedirectOnlyEfootball();
+        const enterpriseId = req.user!.enterpriseId;
+        const result = await linksService.getEfootballManagerData(enterpriseId);
+
+        return res.status(200).json(result);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const changeNextGroup = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const enterpriseId = req.user!.enterpriseId;
+        const result = await linksService.simulateEfootballClick(enterpriseId);
+
+        return res.status(200).json(result);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const redirectOnlyEfootball = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const domain = extractDomain(req);
+        const result = await linksService.processClickAndRedirectOnlyEfootball(domain!);
 
         return res.redirect(result.url);
     } catch (error) {
