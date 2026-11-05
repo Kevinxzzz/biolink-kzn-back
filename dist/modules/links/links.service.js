@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getEfootballManagerData = exports.simulateEfootballClick = exports.processClickAndRedirectOnlyEfootball = exports.processClickAndRedirect = exports.reorderLinks = exports.activateLink = exports.deleteLink = exports.updateLink = exports.getLinkById = exports.getLinks = exports.createLink = void 0;
+exports.getEfootballManagerData = exports.simulateEfootballClick = exports.processClickAndRedirect = exports.reorderLinks = exports.activateLink = exports.deleteLink = exports.updateLink = exports.getLinkById = exports.getLinks = exports.createLink = void 0;
 const prisma_1 = require("../../shared/database/prisma");
 const appError_1 = require("../../shared/errors/appError");
 const redis_1 = require("../../shared/database/redis");
@@ -454,16 +454,6 @@ const processClickAndRedirect = async (categoryId, options) => {
     }
 };
 exports.processClickAndRedirect = processClickAndRedirect;
-const processClickAndRedirectOnlyEfootball = async () => {
-    const categoryEfootball = await prisma_1.prisma.enterpriseCategory.findFirst({
-        where: { name: "efootball" }
-    });
-    if (!categoryEfootball) {
-        throw new appError_1.AppError("Categoria efootball não cadastrada.", 404);
-    }
-    return await (0, exports.processClickAndRedirect)(categoryEfootball.id, { shouldCountClick: false });
-};
-exports.processClickAndRedirectOnlyEfootball = processClickAndRedirectOnlyEfootball;
 const simulateEfootballClick = async (enterpriseId) => {
     const category = await prisma_1.prisma.enterpriseCategory.findFirst({
         where: { name: "efootball", enterpriseId }
