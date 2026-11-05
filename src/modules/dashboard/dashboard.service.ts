@@ -3,6 +3,11 @@ import { redis } from "../../shared/database/redis";
 import { getTodayBRTReferenceDate } from "../../shared/utils/dateUtils";
 import type { DashboardFilters } from "../../shared/types/dashboard.type"
 
+const formatEvolutionKey = (date: Date, period: DashboardFilters["period"]): string => {
+    const iso = date.toISOString();
+    return period === "ano" ? iso.slice(0, 7) : iso.split("T")[0];
+};
+
 export const getDashboardService = async (enterpriseId: string, filters: DashboardFilters) => {
     const { period, linkId, influencerId } = filters;
     const today = getTodayBRTReferenceDate();
@@ -10,11 +15,11 @@ export const getDashboardService = async (enterpriseId: string, filters: Dashboa
     // Determina o período de filtro
     let startDate = new Date(today);
     if (period === "dia") {
-        startDate.setDate(today.getDate() - 1); // Exemplo: Últimos 2 dias ou hoje
+        startDate.setUTCDate(today.getUTCDate() - 1); // Exemplo: Últimos 2 dias ou hoje
     } else if (period === "mes") {
-        startDate.setDate(1); // Início do mês atual
+        startDate.setUTCDate(1); // Início do mês atual
     } else if (period === "ano") {
-        startDate.setMonth(0, 1); // Início do ano atual
+        startDate.setUTCMonth(0, 1); // Início do ano atual (UTC alinhado à referência BRT)
     }
 
     // 1. Obter "Cliques Hoje" do PostgreSQL (Independente do filtro de período, mas dependente do filtro de dimensão)
@@ -100,18 +105,31 @@ export const getDashboardService = async (enterpriseId: string, filters: Dashboa
 
     // Formatar Evolução
     const evolutionMap = new Map<string, number>();
+
+    if (period === "ano") {
+        const currentYear = today.getUTCFullYear();
+        const currentMonth = today.getUTCMonth();
+        for (let m = 0; m <= currentMonth; m++) {
+            const monthKey = `${currentYear}-${String(m + 1).padStart(2, "0")}`;
+            evolutionMap.set(monthKey, 0);
+        }
+    }
+
     for (const record of rawEvolution) {
-        const dateKey = record.referenceDate.toISOString().split("T")[0];
-        evolutionMap.set(dateKey, record.dailyClicks);
+        const dateKey = formatEvolutionKey(record.referenceDate, period);
+        const currentVal = evolutionMap.get(dateKey) || 0;
+        evolutionMap.set(dateKey, currentVal + record.dailyClicks);
     }
 
     if (isTodayInPeriod && redisPendingClicks > 0) {
-        const todayStr = today.toISOString().split("T")[0];
-        const currentTodayVal = evolutionMap.get(todayStr) || 0;
-        evolutionMap.set(todayStr, currentTodayVal + redisPendingClicks);
+        const todayKey = formatEvolutionKey(today, period);
+        const currentTodayVal = evolutionMap.get(todayKey) || 0;
+        evolutionMap.set(todayKey, currentTodayVal + redisPendingClicks);
     }
 
-    const evolution = Array.from(evolutionMap.entries()).map(([date, clicks]) => ({ date, clicks }));
+    const evolution = Array.from(evolutionMap.entries())
+        .map(([date, clicks]) => ({ date, clicks }))
+        .sort((a, b) => a.date.localeCompare(b.date));
 
     // 4. Rankings — sempre pelo período, ignorando filtros dimensionais (linkId / influencerId)
     type TopLinkItem = { id: string; title: string; url: string; clicks: number };
@@ -188,10 +206,24 @@ export const getDashboardService = async (enterpriseId: string, filters: Dashboa
     });
 
     // 7. Influencer Evolution — respeita filtro de influenciador, ignora linkId
+    const infTargets = influencerId
+        ? allInfluencers.filter(inf => inf.id === influencerId)
+        : allInfluencers;
+
+    const createInitialInfluencerRecord = (dateKey: string): Record<string, string | number> => {
+        const record: Record<string, string | number> = { date: dateKey };
+        if (period === "ano") {
+            for (const inf of infTargets) {
+                record[inf.name] = 0;
+            }
+        }
+        return record;
+    };
+
     const influencerEvolutionMap = new Map<string, Record<string, string | number>>();
 
     for (const dateKey of evolutionMap.keys()) {
-        influencerEvolutionMap.set(dateKey, { date: dateKey });
+        influencerEvolutionMap.set(dateKey, createInitialInfluencerRecord(dateKey));
     }
 
     const infEvolutionWhere = influencerId
@@ -204,24 +236,20 @@ export const getDashboardService = async (enterpriseId: string, filters: Dashboa
     });
 
     for (const click of allInfClicks) {
-        const dateKey = click.referenceDate.toISOString().split("T")[0];
+        const dateKey = formatEvolutionKey(click.referenceDate, period);
         if (!influencerEvolutionMap.has(dateKey)) {
-            influencerEvolutionMap.set(dateKey, { date: dateKey });
+            influencerEvolutionMap.set(dateKey, createInitialInfluencerRecord(dateKey));
         }
         const record = influencerEvolutionMap.get(dateKey)!;
         record[click.influencer.name] = (record[click.influencer.name] as number || 0) + click.dailyClicks;
     }
 
     if (isTodayInPeriod) {
-        const todayStr = today.toISOString().split("T")[0];
-        if (!influencerEvolutionMap.has(todayStr)) {
-            influencerEvolutionMap.set(todayStr, { date: todayStr });
+        const todayKey = formatEvolutionKey(today, period);
+        if (!influencerEvolutionMap.has(todayKey)) {
+            influencerEvolutionMap.set(todayKey, createInitialInfluencerRecord(todayKey));
         }
-        const record = influencerEvolutionMap.get(todayStr)!;
-
-        const infTargets = influencerId
-            ? allInfluencers.filter(inf => inf.id === influencerId)
-            : allInfluencers;
+        const record = influencerEvolutionMap.get(todayKey)!;
 
         for (const inf of infTargets) {
             const pend = await redis.get(`influencer_clicks:${enterpriseId}:${inf.id}`);
