@@ -6,8 +6,6 @@ import * as linksController from "./links.controller";
 
 const linksRoutes = Router();
 
-// Rota temporária, quando o cliente quiser a melhoria para multi categorias eu utilizo a rota normal.
-linksRoutes.get("/redirect/efootball", linksController.redirectOnlyEfootball);
 
 // Rota pública para redirecionamento e contabilização de cliques
 linksRoutes.get("/redirect/:categoryId", linksController.redirect);
