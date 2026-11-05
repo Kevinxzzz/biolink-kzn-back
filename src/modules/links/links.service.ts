@@ -523,43 +523,6 @@ export const processClickAndRedirect = async (
 };
 
 
-export const processClickAndRedirectOnlyEfootball = async (domain: string): Promise<{ url: string; updatedVisitorPayload?: VisitorCookiePayload }> => {
-
-    const app = await prisma.application.findFirst({
-        where: {
-            domain
-        }
-    });
-
-    if (!app) {
-        throw new AppError("aplicação não cadastrada.", 404);
-
-    };
-
-    const enterprise = await prisma.enterprise.findFirst({
-        where: {
-            applicationId: app?.id
-        }
-    });
-
-    if (!enterprise) {
-        throw new AppError("Empresa não cadastrada.", 404);
-
-    };
-    const categoryEfootball = await prisma.enterpriseCategory.findFirst({
-        where: {
-            name: "efootball",
-            enterpriseId: enterprise!.id
-        }
-    });
-
-    if (!categoryEfootball) {
-        throw new AppError("Categoria efootball não cadastrada.", 404);
-    };
-
-    return await processClickAndRedirect(categoryEfootball.id, { shouldCountClick: false });
-};
-
 export const simulateEfootballClick = async (enterpriseId: string): Promise<{ status: number; url: string }> => {
     const category = await prisma.enterpriseCategory.findFirst({
         where: { name: "efootball", enterpriseId }
