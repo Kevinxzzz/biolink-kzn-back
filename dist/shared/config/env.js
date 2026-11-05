@@ -16,7 +16,6 @@ const envSchema = zod_1.z.object({
     ALECIO_URL_STAGE: zod_1.z.string().optional(),
     IMPERIO_URL_STAGE: zod_1.z.string().optional(),
     TRUST_PROXY: zod_1.z.string().optional(),
-    ENTERPRISE_ID_KZN: zod_1.z.string()
 });
 const _env = envSchema.safeParse(process.env);
 if (!_env.success) {
