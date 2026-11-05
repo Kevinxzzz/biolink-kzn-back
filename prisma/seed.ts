@@ -66,15 +66,10 @@ async function main() {
     const applications = [
         { name: "KZN", domain: env.KZN_URL! },
         { name: "ALECIO", domain: env.ALECIO_URL! },
-        { name: "IMPERIO", domain: env.IMPERIO_URL! }
     ];
 
     const devCategories = [
         "efootball",
-        "Redes Sociais",
-        "Promocional",
-        "Parcerias",
-        "Suporte"
     ];
 
     for (let i = 0; i < applications.length; i++) {
