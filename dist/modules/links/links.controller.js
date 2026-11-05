@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.redirectOnlyEfootball = exports.changeNextGroup = exports.getEfootballManagerAlecio = exports.redirect = exports.reorder = exports.activate = exports.remove = exports.update = exports.getById = exports.list = exports.create = void 0;
+exports.changeNextGroup = exports.getEfootballManagerAlecio = exports.redirect = exports.reorder = exports.activate = exports.remove = exports.update = exports.getById = exports.list = exports.create = void 0;
 const appError_1 = require("../../shared/errors/appError");
 const links_zod_1 = require("../../shared/zod/links.zod");
 const linksService = __importStar(require("./links.service"));
@@ -207,13 +207,3 @@ const changeNextGroup = async (req, res, next) => {
     }
 };
 exports.changeNextGroup = changeNextGroup;
-const redirectOnlyEfootball = async (_req, res, next) => {
-    try {
-        const result = await linksService.processClickAndRedirectOnlyEfootball();
-        return res.redirect(result.url);
-    }
-    catch (error) {
-        next(error);
-    }
-};
-exports.redirectOnlyEfootball = redirectOnlyEfootball;
