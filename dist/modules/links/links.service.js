@@ -1,11 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.processClickAndRedirectOnlyEfootball = exports.processClickAndRedirect = exports.reorderLinks = exports.activateLink = exports.deleteLink = exports.updateLink = exports.getLinkById = exports.getLinks = exports.createLink = void 0;
+exports.getEfootballManagerData = exports.simulateEfootballClick = exports.processClickAndRedirectOnlyEfootball = exports.processClickAndRedirect = exports.reorderLinks = exports.activateLink = exports.deleteLink = exports.updateLink = exports.getLinkById = exports.getLinks = exports.createLink = void 0;
 const prisma_1 = require("../../shared/database/prisma");
 const appError_1 = require("../../shared/errors/appError");
 const redis_1 = require("../../shared/database/redis");
 const linkUtils_1 = require("../../shared/utils/linkUtils");
-const env_1 = require("../../shared/config/env");
 const dateUtils_1 = require("../../shared/utils/dateUtils");
 const DECR_LUA_SCRIPT = `
 local key = KEYS[1]
@@ -462,10 +461,56 @@ const processClickAndRedirectOnlyEfootball = async () => {
     if (!categoryEfootball) {
         throw new appError_1.AppError("Categoria efootball não cadastrada.", 404);
     }
-    const enterpriseId = env_1.env.ENTERPRISE_ID_KZN;
-    if (!enterpriseId) {
-        throw new appError_1.AppError("EnterpriseId indefinido.", 404);
-    }
     return await (0, exports.processClickAndRedirect)(categoryEfootball.id, { shouldCountClick: false });
 };
 exports.processClickAndRedirectOnlyEfootball = processClickAndRedirectOnlyEfootball;
+const simulateEfootballClick = async (enterpriseId) => {
+    const category = await prisma_1.prisma.enterpriseCategory.findFirst({
+        where: { name: "efootball", enterpriseId }
+    });
+    if (!category) {
+        throw new appError_1.AppError("Categoria efootball não encontrada para esta empresa.", 404);
+    }
+    const result = await (0, exports.processClickAndRedirect)(category.id, {
+        shouldCountClick: true,
+        visitorPayload: { id: "simulate-click", categories: {} },
+    });
+    return { status: 200, url: result.url };
+};
+exports.simulateEfootballClick = simulateEfootballClick;
+const getEfootballManagerData = async (enterpriseId) => {
+    const category = await prisma_1.prisma.enterpriseCategory.findFirst({
+        where: { name: "efootball", enterpriseId }
+    });
+    if (!category) {
+        throw new appError_1.AppError("Categoria efootball não encontrada para esta empresa.", 404);
+    }
+    const referenceDate = (0, dateUtils_1.getTodayBRTReferenceDate)();
+    const [links, rotation, dailyClicksRecord, redisCountStr] = await Promise.all([
+        (0, exports.getLinks)(enterpriseId, category.id),
+        prisma_1.prisma.categoryRotation.findFirst({
+            where: { categoryId: category.id }
+        }),
+        prisma_1.prisma.enterpriseCountDailyClicks.findFirst({
+            where: { enterpriseId, referenceDate }
+        }),
+        redis_1.redis.get(`clicks:${enterpriseId}:${category.id}`)
+    ]);
+    const activeLink = links.find((link) => link.active) ?? null;
+    const redisPending = redisCountStr ? parseInt(redisCountStr, 10) : 0;
+    const validRedisPending = isNaN(redisPending) ? 0 : redisPending;
+    const dailyClicks = (dailyClicksRecord?.dailyClicks ?? 0) + validRedisPending;
+    const rotationLimit = rotation?.limitClicks ?? 0;
+    return {
+        categoryId: category.id,
+        links,
+        activeLink,
+        status: {
+            totalLinks: links.length,
+            dailyClicks,
+            rotationLimit,
+            activeLink: activeLink ? activeLink.title : null,
+        },
+    };
+};
+exports.getEfootballManagerData = getEfootballManagerData;

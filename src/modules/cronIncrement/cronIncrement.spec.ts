@@ -35,6 +35,7 @@ describe("CronIncrement Module (Etapa 2) - Consolidação", () => {
     let mockTx: any;
 
     beforeEach(() => {
+        jest.spyOn(console, "error").mockImplementation(() => {});
         mockTx = {
             $executeRaw: jest.fn(),
             enterpriseUrl: {

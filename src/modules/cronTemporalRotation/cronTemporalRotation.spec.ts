@@ -209,6 +209,7 @@ describe("Temporal Rotation Module (Etapa 3) - TIMER e SCHEDULE", () => {
             
             // Simula erro no banco DURANTE a consolidação do Link A
             mockTx.urlCountDailyClicks.upsert.mockRejectedValueOnce(new Error("Erro Banco"));
+            const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
 
             await processTemporalRotations();
 
@@ -216,6 +217,7 @@ describe("Temporal Rotation Module (Etapa 3) - TIMER e SCHEDULE", () => {
             // E o redis.incrby tbm não roda pois compensatedAmount = 0
             expect(redis.eval).not.toHaveBeenCalled();
             expect(redis.incrby).not.toHaveBeenCalled(); 
+            consoleSpy.mockRestore();
             // O update ativando o Link B não deve ter acontecido, preservando a regra
             expect(mockTx.enterpriseUrl.update).not.toHaveBeenCalledWith({
                 where: { id: "link-b" },

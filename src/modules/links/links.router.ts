@@ -6,8 +6,6 @@ import * as linksController from "./links.controller";
 
 const linksRoutes = Router();
 
-// Rota temporária, quando o cliente quiser a melhoria para multi categorias eu utilizo a rota normal.
-linksRoutes.get("/redirect/kzngg/efootball", linksController.redirectOnlyEfootballFromKzn);
 
 // Rota pública para redirecionamento e contabilização de cliques
 linksRoutes.get("/redirect/:categoryId", linksController.redirect);
@@ -19,6 +17,8 @@ linksRoutes.use(hasRole(UserRole.OWNER, UserRole.ADMIN));
 
 linksRoutes.post("/", linksController.create);
 linksRoutes.get("/", linksController.list);
+linksRoutes.get("/efootball/alecio", linksController.getEfootballManagerAlecio);
+linksRoutes.put("/change-next-group", linksController.changeNextGroup);
 linksRoutes.get("/:id", linksController.getById);
 linksRoutes.patch("/reorder", linksController.reorder);
 linksRoutes.patch("/:id", linksController.update);
